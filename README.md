@@ -1,6 +1,8 @@
 # Locomotive · 机器人工作台
 
-Windows 桌面应用，用于创建、配置和连接 QQ 机器人。自己填写机器人的名字、人设和模型供应商，通过手机 QQ 扫码登录即可使用。
+Windows 桌面应用，用于创建、配置和连接 QQ 机器人。自己填写机器人的名字、人设和模型供应商。
+
+本软件是**通用 OneBot 11 客户端**：不做 QQ 登录、不显示二维码，也不下载或启动任何协议端。你需要自备一个已登录的 OneBot 11 兼容协议端，把它的 WebSocket 地址与访问令牌填进来。
 
 > **v4.0.0 · 本仓库第一个公开版本 · 源码与 Windows 二进制均已发布**
 
@@ -16,7 +18,7 @@ Windows 桌面应用，用于创建、配置和连接 QQ 机器人。自己填�
 | 项 | 状态 |
 | --- | --- |
 | 应用源码 | ✅ 已公开（`src/`，40 个文件） |
-| 二进制安装包 | ✅ [Locomotive-v4.0.0-Windows-x64.zip](https://github.com/wlan2979/locomotive-qq-bot/releases/download/v4.0.0/Locomotive-v4.0.0-Windows-x64.zip)（22,612,045 字节） |
+| 二进制安装包 | ✅ [Locomotive-v4.0.0-Windows-x64.zip](https://github.com/wlan2979/locomotive-qq-bot/releases/download/v4.0.0/Locomotive-v4.0.0-Windows-x64.zip)（22,612,048 字节） |
 | 版本号 | `4.0.0`（`src/app.py` 的 `VERSION`） |
 | 仓库历史 | 已重置为**单一初始提交**，v4.0.0 是唯一版本起点 |
 | 全新环境验证 | ❌ 未做。`requirements.txt` 取自原构建环境，最小可用集合未验证 |
@@ -26,10 +28,10 @@ Windows 桌面应用，用于创建、配置和连接 QQ 机器人。自己填�
 
 ## 下载
 
-**[Locomotive-v4.0.0-Windows-x64.zip](https://github.com/wlan2979/locomotive-qq-bot/releases/download/v4.0.0/Locomotive-v4.0.0-Windows-x64.zip)**（22,612,045 字节）
+**[Locomotive-v4.0.0-Windows-x64.zip](https://github.com/wlan2979/locomotive-qq-bot/releases/download/v4.0.0/Locomotive-v4.0.0-Windows-x64.zip)**（22,612,048 字节）
 
 ```text
-SHA-256  92e2da471fda3b6658be3fb112331798bcb74e161050c0824d38b664f45509bc
+SHA-256  0668d125b8da3065e36ea8139cdfc2b0955a91f3f1a1a420aecba41d8b5c6448
 ```
 
 解压后得到 `Locomotive/` 目录，含 `Locomotive.exe`（22,801,580 字节）、`Locomotive-使用说明.txt`、`THIRD_PARTY_NOTICES.txt`。
@@ -39,6 +41,8 @@ SHA-256  92e2da471fda3b6658be3fb112331798bcb74e161050c0824d38b664f45509bc
 ## 已解耦：不下载、不安装、不启动任何协议端
 
 v4.0.0 起，Locomotive 是标准的 **OneBot 11 正向 WebSocket 客户端**。它不下载、不安装、不配置、不启动任何协议端实现。
+
+> **边界**：这里说的「不下载」只针对**协议端**。ComfyUI / VoiceStudio 插件在缺失时仍会自动下载安装（见下方「插件与资源」）。
 
 你需要自己准备一个兼容 OneBot 11 的协议端，登录你的 QQ 账号，把它的 WebSocket 地址与访问令牌填进本工作台。
 
@@ -120,7 +124,7 @@ python -m unittest discover -p "test_*.py" -q
 
 **能同时连多个机器人吗？** 当前一次只能连一个，切换或改设置前先停止。
 
-**数据存在哪？** `%LOCALAPPDATA%\TaoTaoBot`，含加密密钥、聊天记录与设置，**不要分享或提交**。
+**数据存在哪？** `%LOCALAPPDATA%\TaoTaoBot`，含加密密钥、聊天记录与设置，**不要分享或提交**。目录名沿用早期版本，改名会导致旧数据丢失，所以保留。
 
 **怎么自己打包？** 见上文「打包」，`src/Locomotive.spec` 是全相对路径的。
 
@@ -130,9 +134,9 @@ python -m unittest discover -p "test_*.py" -q
 - [x] 公开应用源码，仓库历史重置为 v4.0.0 单一初始提交
 - [x] 补齐第三方许可声明与 LGPL 依赖源码说明，修正第三方声明措辞
 - [x] **协议层解耦**：移除内置协议端的自动下载 / 配置 / 启动，改为通用 OneBot 11 客户端，用户自备兼容协议端并填写 WebSocket 地址与 Token
-- [ ] 裁剪 `bot/` 中的历史遗留模块
+- [ ] 裁剪 `bot/` 中的历史遗留模块（抖音发布/评论/调度、贴纸、手机自动化等，需改 `core.py` 的导入，会破坏可运行性，单独一轮处理）
 - [ ] 全新环境端到端验证，补 WebView2 缺失提示
-- [ ] 打包并发布第一个可用二进制版本，重新生成校验值
+- [x] 打包并发布第一个可用二进制版本（v4.0.0，SHA-256 已写入 Release 与 README）
 - [ ] 补作者声明，确定正式开源许可证
 
 ## 反馈与贡献
