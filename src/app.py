@@ -152,9 +152,7 @@ def make_config(ws_url: str, token: str, model=None, plugins=None, name="桃桃"
                 "owner_ids": [], "enable_search": False, "history_persist": True, "summary_enabled": False},
         "imagegen": {"enable": False, "comfyui_enable": False},
         "sticker_gen": {"enable": False, "generate": False, "prewarm": False},
-        "phone": {"enable": False},
-        "hands": {"enable": False, "douyin_browse": False, "comment_enable": False, "launch_emulator": False},
-        "douyin": {"enable": False}, "seedance": {"enable": False}, "tts": {"enabled": False},
+        "tts": {"enabled": False},
         "log": {"level": "INFO", "dir": "logs"},
     }
     result["deepseek"].update({key: value for key, value in (model or DEFAULT_MODEL).items() if key != "provider"})
@@ -663,7 +661,6 @@ def self_test(report):
         write_json(directory / "config.json", config)
         (directory / "persona.txt").write_text("你叫桃桃。", encoding="utf-8")
         cfg = Config.load(directory / "config.json")
-        verify(not cfg.phone.enable and not cfg.hands.enable and not cfg.douyin.enable, "Autonomous actions enabled")
         verify(not cfg.sticker_gen.prewarm and not cfg.imagegen.enable and not cfg.bot.summary_enabled, "Background calls enabled")
         verify(cfg.base_dir == directory, "Config data path mismatch")
         checks.append("Starter config loads; autonomous features disabled")

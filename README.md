@@ -18,7 +18,7 @@ Windows 桌面应用，用于创建、配置和连接 QQ 机器人。自己填�
 | 项 | 状态 |
 | --- | --- |
 | 应用源码 | ✅ 已公开（`src/`，40 个文件） |
-| 二进制安装包 | ✅ [Locomotive-v4.0.0-Windows-x64.zip](https://github.com/wlan2979/locomotive-qq-bot/releases/download/v4.0.0/Locomotive-v4.0.0-Windows-x64.zip)（22,612,048 字节） |
+| 二进制安装包 | ✅ [Locomotive-v4.0.0-Windows-x64.zip](https://github.com/wlan2979/locomotive-qq-bot/releases/download/v4.0.0/Locomotive-v4.0.0-Windows-x64.zip)（22,434,663 字节） |
 | 版本号 | `4.0.0`（`src/app.py` 的 `VERSION`） |
 | 仓库历史 | 已重置为**单一初始提交**，v4.0.0 是唯一版本起点 |
 | 全新环境验证 | ❌ 未做。`requirements.txt` 取自原构建环境，最小可用集合未验证 |
@@ -28,13 +28,13 @@ Windows 桌面应用，用于创建、配置和连接 QQ 机器人。自己填�
 
 ## 下载
 
-**[Locomotive-v4.0.0-Windows-x64.zip](https://github.com/wlan2979/locomotive-qq-bot/releases/download/v4.0.0/Locomotive-v4.0.0-Windows-x64.zip)**（22,612,048 字节）
+**[Locomotive-v4.0.0-Windows-x64.zip](https://github.com/wlan2979/locomotive-qq-bot/releases/download/v4.0.0/Locomotive-v4.0.0-Windows-x64.zip)**（22,434,663 字节）
 
 ```text
-SHA-256  0668d125b8da3065e36ea8139cdfc2b0955a91f3f1a1a420aecba41d8b5c6448
+SHA-256  ca25e84a4580690403f64e456ca379fc30968b451b7d607139dfbeb091627da5
 ```
 
-解压后得到 `Locomotive/` 目录，含 `Locomotive.exe`（22,801,580 字节）、`Locomotive-使用说明.txt`、`THIRD_PARTY_NOTICES.txt`。
+解压后得到 `Locomotive/` 目录，含 `Locomotive.exe`（22,623,006 字节）、`Locomotive-使用说明.txt`、`THIRD_PARTY_NOTICES.txt`。
 
 运行前需要 Microsoft Edge WebView2 运行时，并自备一个已登录的 OneBot 11 兼容协议端。
 
@@ -103,9 +103,17 @@ python -m unittest discover -p "test_*.py" -q
 | `src/THIRD_PARTY_NOTICES.txt` | 第三方许可全文、LGPL 依赖源码获取说明 |
 | `requirements.txt` | 运行与打包依赖 |
 
-## 历史遗留模块（不是 v4 功能）
+## 已移除的历史遗留模块
 
-`src/bot/` 中的 `douyin_*`、`phone.py`、`hands.py`、`seedance.py`、`sticker*`、`taotao_video.py`、`inspiration.py` 等来自早期「桃桃」机器人项目，与 Locomotive 工作台无关。`bot/core.py` 是引擎核心且与这些模块互相引用，为保证源码可运行暂未裁剪，后续会单独处理。
+早期「桃桃」项目带来的抖音、手机自动化、视频生成等模块已全部移除，共 9 个文件：
+
+- `douyin_commenter.py`、`douyin_publisher.py`、`douyin_scheduler.py`、`douyin_share.py`
+- `phone.py`（手机/模拟器自动化）、`hands.py`（真机屏幕操作）
+- `seedance.py`（图生视频）、`taotao_video.py`（视频合成）、`inspiration.py`（灵感库）
+
+`bot/core.py` 里对应的工具注册、工具执行分支、定时循环与主动发言逻辑也一并删除；配置里的 `phone` / `hands` / `douyin` / `seedance` 四段全部去掉。`bot/` 从 24 个模块降到 16 个，总行数减少约一半。
+
+保留的只有 QQ 聊天相关能力：OneBot 连接、消息处理、模型调用、记忆、联网搜索、生图、表情包、语音、用量统计、对话摘要。
 
 ## 安全与隐私
 
@@ -134,7 +142,7 @@ python -m unittest discover -p "test_*.py" -q
 - [x] 公开应用源码，仓库历史重置为 v4.0.0 单一初始提交
 - [x] 补齐第三方许可声明与 LGPL 依赖源码说明，修正第三方声明措辞
 - [x] **协议层解耦**：移除内置协议端的自动下载 / 配置 / 启动，改为通用 OneBot 11 客户端，用户自备兼容协议端并填写 WebSocket 地址与 Token
-- [ ] 裁剪 `bot/` 中的历史遗留模块（抖音发布/评论/调度、贴纸、手机自动化等，需改 `core.py` 的导入，会破坏可运行性，单独一轮处理）
+- [x] 裁剪 `bot/` 中的历史遗留模块：抖音、手机自动化、视频生成、灵感库共 9 个文件已移除，`bot/` 降到 16 个模块
 - [ ] 全新环境端到端验证，补 WebView2 缺失提示
 - [x] 打包并发布第一个可用二进制版本（v4.0.0，SHA-256 已写入 Release 与 README）
 - [ ] 补作者声明，确定正式开源许可证

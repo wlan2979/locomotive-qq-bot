@@ -57,8 +57,7 @@ class AppTests(unittest.TestCase):
         config = app.make_config("ws://127.0.0.1:12345", "local-test-only")
         self.assertEqual(config["deepseek"]["api_key"], "")
         self.assertEqual(config["onebot"]["ws_url"], "ws://127.0.0.1:12345")
-        for section, name in [("phone", "enable"), ("hands", "enable"), ("douyin", "enable"),
-                              ("imagegen", "enable"), ("sticker_gen", "prewarm"), ("bot", "summary_enabled")]:
+        for section, name in [("imagegen", "enable"), ("sticker_gen", "prewarm"), ("bot", "summary_enabled")]:
             self.assertIs(config[section][name], False)
 
     def test_saved_key_is_encrypted_and_never_returned(self):

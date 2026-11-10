@@ -175,31 +175,6 @@ async def amain(args: argparse.Namespace) -> int:
                 "滚动摘要已启用：每 %.0f 分钟检查一次（超出 %d 轮的部分会被压缩保留）",
                 cfg.bot.summary_interval_minutes, cfg.bot.history_max_turns,
             )
-        # 手机：独处心跳。没人理她的时候她自己刷会儿，攒着「今天看到了什么」。
-        # 放在最后启动 —— 它依赖 OneBot 已连上（主动发言要发群消息），
-        # 而且它是纯锦上添花的功能，前面任何一个环节没起来都不该等它。
-        if cfg.phone.enable:
-            tasks.append(asyncio.create_task(core.phone_loop(), name="phone-loop"))
-
-        # 抖音：她自己发视频。**不需要人批准**（2026-10-24 用户明确说的）。
-        # 护栏在 DouyinScheduler 里：一天一条、只在白天、失败即停。
-        # 放在最后启动 —— 它依赖手机（hands）和本机 ComfyUI，两者缺一个
-        # 都发不了，前面任何一个环节没起来都不该等它。
-        if cfg.douyin.enable:
-            tasks.append(
-                asyncio.create_task(core.douyin_loop(), name="douyin-loop")
-            )
-
-        # 抖音：自主刷。她自己的时间自己刷推荐流（2026-11-06 用户要求）。
-        # 和上面「发视频」是两件事：这个只看不发，但要在模拟器里滑屏幕，
-        # 所以依赖 hands 已启用；默认关，config.hands.douyin_browse 打开才跑。
-        if cfg.hands.enable and cfg.hands.douyin_browse:
-            tasks.append(
-                asyncio.create_task(
-                    core.douyin_browse_loop(), name="douyin-browse"
-                )
-            )
-
         log.info("开始监听消息。按 Ctrl+C 退出。")
         try:
             await asyncio.gather(*tasks)

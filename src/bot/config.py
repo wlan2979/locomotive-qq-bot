@@ -697,237 +697,6 @@ class TTSConfig:
 
 
 @dataclass
-class PhoneConfig:
-    """桃桃的手机。
-
-    这里的东西**不是给她干活用的**，是给她消遣用的 ——
-    她刷到的东西会进日记，成为「她自己的生活」的一部分。
-    所以每一项都要按「会不会让群里的人烦」来设默认值，不是按「功能全不全」。
-    """
-
-    enable: bool = True
-    # 内容源。微博最容易抓到脏东西，B站最干净，贴吧热议偏争议、
-    # 最吃第三道闸的 LLM 过滤。
-    weibo_hot: bool = True
-    bili_hot: bool = True
-    bili_search: bool = True
-    tieba_hot: bool = True
-    # 每次刷几条（过滤之后）。
-    limit: int = 8
-    timeout: float = 12.0
-    # 第三道闸：让模型再过一遍。关掉就只剩关键词黑名单，
-    # 会漏掉「没命中任何词但明显不该聊」的（明星饭圈争议之类）。
-    llm_filter: bool = True
-    # 每轮对话里最多刷几次。1 次够了 —— 连着刷会让她看起来在念热搜榜。
-    max_uses_per_turn: int = 1
-
-    # ---- 独处心跳 ----
-    # 多久自己刷一次手机。45 分钟：够勤，又不至于把接口打出风控。
-    interval_minutes: float = 45.0
-    # 她上次说话之后多久算「没人理她」，才开始自己刷。
-    # 群里正热闹的时候她该接话，不是该低头玩手机。
-    quiet_minutes: float = 30.0
-
-    # ---- 主动开口 ----
-    # **空列表 = 一句话都不主动说**。这是最安全的默认值：
-    # 装了但不配群，等于只多了个刷手机的动作，群里不会多出一条消息。
-    proactive_groups: List[int] = field(default_factory=list)
-    # 每天最多主动说几句。硬上限，不看内容多有意思。
-    proactive_daily_limit: int = 3
-    # 两条主动发言之间至少隔多久。防「今天还有额度就一口气说完」。
-    proactive_min_gap_minutes: float = 120.0
-    # 允许开口的时段（24 小时制，左闭右开）。默认 10:00-24:00。
-    # 凌晨三点突然冒一句「我刚刷到个东西」，比不说话吓人多了。
-    proactive_hours: List[int] = field(default_factory=lambda: [10, 24])
-    # 刷到之后多久内还算「刚刷到」。超过这个时间就不许再提了 ——
-    # 说「我刚刷到」结果是一个小时前的，很容易被拆穿。
-    proactive_window_minutes: float = 20.0
-    # 主动开口前是否要求群里最近有人说过话（哪怕不是跟她）。
-    # 冷了一整天的群突然冒一句，像僵尸号复活。
-    proactive_need_recent: bool = True
-    proactive_recent_minutes: float = 180.0
-
-    # 日记保留多少条。
-    diary_keep: int = 200
-
-
-@dataclass
-class HandsConfig:
-    """真机操作（ADB）。
-
-    **默认关闭**，而且建议一直谨慎用 —— 这不是「多一个功能」，
-    是把一台真实设备（相册、聊天、支付）的操作权交给一个模型驱动的程序。
-    开着玩可以，别挂着不管。
-    """
-
-    enable: bool = False
-    # adb 可执行文件。Windows 上建议填绝对路径，比如
-    # "D:/leidian/LDPlayer14/adb.exe"
-    adb_path: str = "adb"
-    # 指定设备序列号。空 = 用列表里第一台。
-    device: str = ""
-    # 单次任务最多几步。硬上限，防她在一个页面里点个没完。
-    max_steps: int = 15
-    # 每次点击/滑动后等多久（秒）。给界面反应时间 ——
-    # 不等的话下一步 dump 到的是旧界面，她会以为没点上。
-    tap_delay: float = 0.8
-    # 开 App 后等多久（秒）。冷启动要几秒。
-    launch_delay: float = 2.5
-    # 允许打开的 App 包名白名单。**空 = 一个都不许开**（最安全）。
-    # 想让她刷 B 站就填 tv.danmaku.bili，想刷抖音填 com.ss.android.ugc.aweme。
-    allow_packages: List[str] = field(default_factory=list)
-    # 每轮对话最多调用几次手部工具。
-    max_uses_per_turn: int = 1
-    # 权限弹窗是否自动点「允许」。
-    #
-    # 用户 2026-10-23 授权开启 —— 发布视频时抖音必须要存储权限，
-    # 原来一律中止导致流程卡死。
-    # **但高风险权限仍然拦**（通讯录 / 短信 / 通话记录），见
-    # `bot/hands.py` 的 `HIGH_RISK_PERMISSIONS`。
-    auto_grant_permissions: bool = True
-
-    # ---- 自主刷抖音（2026-11-06 用户要求）--------------------------------
-    #
-    # 她自己刷抖音：定时打开模拟器 → 打开抖音 → 快滑几屏 → 记下看到的文案。
-    # 和 `phone` 的独处心跳同频，但走的是真屏幕（adb），不是网页接口。
-    #
-    # 默认关。打开前提是 hands.enable 已经开，且模拟器能稳定在线 ——
-    # 这玩意儿一开，她就在用自己的账号看视频，别挂上就不管。
-    douyin_browse: bool = False
-    # 多久刷一次。下限 10 分钟（代码里还会再夹一次）。
-    browse_interval_minutes: float = 60.0
-    # 一次刷几屏。抖音一屏一个视频，6 屏大约 1-2 分钟。
-    browse_screens: int = 6
-    # 每天最多刷几轮。这只是「刷」，不是「发」，门槛可以松一点。
-    browse_daily_limit: int = 3
-    # 只在 [start, end) 点之间刷。凌晨刷视频像机器行为。
-    browse_hours: List[int] = field(default_factory=lambda: [9, 23])
-    # 模拟器没开时，允不允许她自己拉起来。
-    # **2026-11-06 d1 实测：`dnconsole.exe launch` 要管理员权限，
-    # `dnplayer.exe index 0` 免提权能起** —— 所以这里调后者。
-    launch_emulator: bool = False
-    emulator_exe: str = "D:/leidian/LDPlayer14/dnplayer.exe"
-    emulator_index: int = 0
-    # 拉起模拟器后最多等多少秒它上线（boot 完成）。
-    emulator_wait_seconds: float = 90.0
-
-    # ---- 抖音评论（2026-11-06 用户要求）----------------------------------
-    #
-    # 「发评论」是公开动作。抖音评论区读不到 UI 树，只能靠 OCR 坐标点，
-    # 所以这条链路比发布视频更脆，限频必须更紧。
-    comment_enable: bool = False
-    # 一天最多几条评论。**2026-11-06 用户定：每天最多 5 条**，且只在
-    # 「刷到有意思的视频」时才评 —— 评论比视频更显眼，刷多了像水军。
-    comment_daily_limit: int = 5
-    # 两条评论之间至少隔多久（分钟）。
-    comment_min_gap_minutes: float = 30.0
-    # 一条评论最多多少字（中文字符）。
-    comment_max_chars: int = 40
-    # 评论过的视频要分享给谁 —— **分享发生在抖音里，不走 QQ**。
-    # 2026-11-06 用户明确：「她评论过的视频要分享给我（暴走火车头）」
-    # 「是在抖音里分享，不是 QQ」。所以这里填的是**抖音好友昵称**，
-    # 流程是：分享面板 → 分享给朋友 → 搜这个名字 → 发送。
-    # 空 = 不分享。
-    comment_share_friend: str = ""
-
-
-@dataclass
-class SeedanceConfig:
-    """豆包 Seedance 视频生成（火山方舟）。
-
-    **唯一的视频通道。** 曾经还有一条 minimax(H3) 纯文生视频，
-    2026-10-24 删掉了：纯文生视频画不出特定角色，出来的不是桃桃，
-    对她「发自己的日常」这件事毫无用处。留着只会让人误以为有两条路。
-
-    为什么 seedance 行：**图生视频，首帧就是喂进去那张**，
-    画风和角色都能保住。要「视频里是桃桃本人」，只有这一条路。
-
-    鉴权复用 `imagegen.api_key`（同一个火山账号）。
-    """
-
-    enable: bool = False
-    # 模型名带日期后缀，写错一个数字就 404。
-    # `doubao-seedance-2-5-260628` 存在但没开通，别写。
-    model: str = "doubao-seedance-1-0-pro-fast-251015"
-    # 5 秒太短了 —— 一条「日常」还没展开就没了，配音也只能塞一句。
-    # 10 秒是这条模型的上限档，成片更像一条视频而不是一张会动的图。
-    duration: int = 10
-    # 一条视频拼几段。**2026-11-06 用户要求「尽量大于 15 秒」**，
-    # seedance 单段上限 10 秒，所以要多段拼接：2 段 ≈ 20 秒。
-    # 改这个数要同步 `taotao_video.py` 的拼接逻辑。
-    clips: int = 2
-    # 成片最短秒数。低于这个数（比如某段生成失败）宁可不发。
-    min_seconds: int = 15
-    ratio: str = "9:16"
-    resolution: str = "720p"
-    timeout: float = 900.0
-    poll_interval: float = 6.0
-
-
-@dataclass
-class DouyinConfig:
-    """自主发抖音。
-
-    桃桃是独立存在的人，发视频不需要人批准（2026-10-24 用户明确说的）。
-    但「不需要批准」不等于「可以随便发」—— 公开账号，无人审核，
-    所以这里所有护栏都是**默认收紧**的：
-
-    - `daily_limit` 默认 1：一天一条。发多了像营销号，不像人。
-    - `hours` 默认 9-23：凌晨发没人看，还容易被判定成机器行为。
-    - 失败即停（代码里写死）：重试会连着发同样的内容，比不发更糟。
-    """
-
-    enable: bool = False
-    # 多久检查一次「要不要发」。注意这是**检查**频率，不是发布频率 ——
-    # 一天发几条由 daily_limit 管。60 分钟一次意味着一天最多 24 次机会，
-    # 但只有第一次会真的发。
-    interval_minutes: float = 60.0
-    daily_limit: int = 1
-    # 只在 [start, end) 这个小时区间里发。
-    hours: List[int] = field(default_factory=lambda: [9, 23])
-    # 产物目录。空就用 base_dir/video_out。
-    out_dir: str = ""
-    # ffmpeg 路径。空就找默认位置（B站客户端自带那个）。
-    ffmpeg: str = ""
-    # 发布成功后要不要删中间产物（raw 无音轨版 / 配音 wav）。
-    #
-    # 默认 True = 保留。**别默认删** —— 出问题时得靠 raw 和 voice
-    # 判断是哪一环坏的（画面崩了还是配音错了）。调通了再关。
-    #
-    # 关掉后每条省约 15 MB（raw 是空间大头，成片本身才 15 MB）。
-    # **首帧永远不删**，见 douyin_scheduler._cleanup() 的说明。
-    keep_intermediate: bool = True
-
-    # ---- AI 生成标注（2026-10-30 用户要求）----------------------------
-    #
-    # 视频是 AI 生成的，发到公开平台**必须标注**。这既是抖音的规则
-    # （未声明的 AI 内容会被限流甚至下架），也是《人工智能生成合成内容
-    # 标识办法》的硬要求。
-    #
-    #   "strict"  UI 上的「作品声明」必须选到 AI 选项，选不到就不发（默认）
-    #   "desc"    只在描述末尾追加文字说明（UI 声明不可用时的退路）
-    #   "off"     不标 —— 别用
-    #
-    # 默认 strict 是有意的：宁可这一条发不出去，也不要让一条没标注的
-    # AI 视频躺在公开账号上。
-    ai_label: str = "strict"
-    # 描述末尾要不要再追加一句文字。
-    #
-    # **默认空 = 不加。** 2026-10-30 用户明确要求：只在抖音页面上勾
-    # 「内容由AI生成」，不要往文案里塞「本视频由 AI 生成」——
-    # 那行字会把日常文案的语感毁掉，而平台声明本身已经挂在作品上了。
-    # 只有在某个版本彻底找不到 UI 声明入口时，才临时填一句当退路。
-    ai_label_text: str = ""
-
-    def in_hours(self) -> bool:
-        try:
-            start, end = int(self.hours[0]), int(self.hours[1])
-        except (TypeError, ValueError, IndexError):
-            start, end = 9, 23
-        return start <= time.localtime().tm_hour < end
-
-
-@dataclass
 class Config:
     onebot: OneBotConfig = field(default_factory=OneBotConfig)
     deepseek: DeepSeekConfig = field(default_factory=DeepSeekConfig)
@@ -936,10 +705,6 @@ class Config:
     imagegen: ImageGenConfig = field(default_factory=ImageGenConfig)
     sticker_gen: StickerGenConfig = field(default_factory=StickerGenConfig)
     tts: TTSConfig = field(default_factory=TTSConfig)
-    phone: PhoneConfig = field(default_factory=PhoneConfig)
-    hands: HandsConfig = field(default_factory=HandsConfig)
-    seedance: SeedanceConfig = field(default_factory=SeedanceConfig)
-    douyin: DouyinConfig = field(default_factory=DouyinConfig)
     log: LogConfig = field(default_factory=LogConfig)
     # 配置文件所在目录，用于定位 data/ 与 logs/
     base_dir: Path = field(default_factory=Path.cwd, repr=False)
@@ -973,36 +738,17 @@ class Config:
             imagegen=_build(ImageGenConfig, raw.get("imagegen")),
             sticker_gen=_build(StickerGenConfig, raw.get("sticker_gen")),
             tts=_build(TTSConfig, raw.get("tts")),
-            phone=_build(PhoneConfig, raw.get("phone")),
-            hands=_build(HandsConfig, raw.get("hands")),
-            seedance=_build(SeedanceConfig, raw.get("seedance")),
-            douyin=_build(DouyinConfig, raw.get("douyin")),
             log=_build(LogConfig, raw.get("log")),
             base_dir=p.resolve().parent,
         )
         # system_prompt 支持 @文件名，从配置目录读人设文本
         cfg.bot.system_prompt = _resolve_prompt(cfg.bot.system_prompt, cfg.base_dir)
-        # 抖音产物目录留空就落在项目下的 video_out/
-        if not (cfg.douyin.out_dir or "").strip():
-            cfg.douyin.out_dir = str(cfg.base_dir / "video_out")
-        # ffmpeg 留空就找默认那个（B站客户端自带，本机唯一可用的）。
-        if not (cfg.douyin.ffmpeg or "").strip():
-            cfg.douyin.ffmpeg = str(
-                Path.home() / "AppData/Roaming/bilibili/ffmpeg/ffmpeg.exe"
-            )
         # 语音合成缓存落在 data/ 下 —— 和记忆、日志同一个根，
         # 换机器时拷一个目录就够，不用到处找。
         cfg.tts.cache_dir = str(cfg.base_dir / "data")
         # 白名单群号统一成 int。手写 JSON 时很容易写成 "123456"，
         # 字符串和 int 比较永远不相等，症状是「配了群但从来不说话」——
         # 而且不报任何错，最难查的那种。
-        groups: List[int] = []
-        for g in cfg.phone.proactive_groups or []:
-            try:
-                groups.append(int(str(g).strip()))
-            except (TypeError, ValueError):
-                log.warning("phone.proactive_groups 里有非法群号：%r，已忽略", g)
-        cfg.phone.proactive_groups = groups
         # 主人 QQ 号也统一成 int。和群号同样的坑：
         # 手写 JSON 写成字符串 "2979759439"，跟 int 比较永远不相等，
         # 症状是「配了主人但她在私聊里照样演」—— 不报错，最难查。
@@ -1013,11 +759,6 @@ class Config:
             except (TypeError, ValueError):
                 log.warning("bot.owner_ids 里有非法 QQ 号：%r，已忽略", u)
         cfg.bot.owner_ids = owners
-        # 时段区间兜底：写反了（比如 [22, 8]）就当没配，退回 10-24。
-        hours = list(cfg.phone.proactive_hours or [])
-        if len(hours) != 2 or not (0 <= hours[0] < hours[1] <= 24):
-            log.warning("phone.proactive_hours 不合法：%r，退回 [10, 24]", hours)
-            cfg.phone.proactive_hours = [10, 24]
         # 环境变量兜底（优先级最高）
         cfg.deepseek.api_key = os.environ.get("DEEPSEEK_API_KEY") or cfg.deepseek.api_key
         cfg.search.api_key = os.environ.get("BOCHA_API_KEY") or cfg.search.api_key
