@@ -107,9 +107,13 @@ class AppTests(unittest.TestCase):
             self.assertEqual(json.loads(account.read_text("utf-8")), {"network": {}})
             self.assertFalse((directory / "profile/third-party/config/webui.json").exists())
             self.assertFalse((runtime / "third-party/config/webui.json").exists())
-            config = json.loads((directory / "profile/config.json").read_text("utf-8"))
+            config = json.loads((controller.directory / "config.json").read_text("utf-8"))
             self.assertEqual(config["deepseek"]["api_key"], "")
             self.assertEqual(config["onebot"]["ws_url"], "ws://127.0.0.1:3001")
+
+    def test_webview2_probe_is_explicit(self):
+        version = app.webview2_version()
+        self.assertTrue(version is None or isinstance(version, str))
 
     def test_onebot_endpoint_validation(self):
         for bad in ("http://127.0.0.1:3001", "ws://", "ws://user:pass@127.0.0.1:3001", "", 12345):

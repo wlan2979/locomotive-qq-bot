@@ -174,11 +174,11 @@ class BotConfig:
     # 机器人自己的名字（可多个）。用来在**窗口内没 @ 的消息**里判断
     # 「是不是在叫它」：消息里出现了这些词，就当成在跟它说话。
     #
-    # 人设换了记得同步改（persona.txt 第一行「你叫「桃桃」」）。
+    # 人设换了记得同步改（persona.txt 第一行「你叫「小北」」）。
     # 为什么不用回复引用（reply 段）来判断：那要跟踪自己发出的消息 ID，
     # 而 OneBot 的 `send_group_msg` 不回消息 ID，得动接口层 —— 不值得。
     # 名字这条信号已经够准，剩下的交给模型的上下文判断。
-    self_names: List[str] = field(default_factory=lambda: ["桃桃"])
+    self_names: List[str] = field(default_factory=list)
     # 主人（本人）的 QQ 号。**这里是整份配置里唯一影响「她怎么对待你」的东西。**
     #
     # 为什么要单独一层：她本来对所有人都只有一副面孔 —— 接梗、夸张、发癫，

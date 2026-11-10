@@ -9,7 +9,6 @@ import json
 import os
 from pathlib import Path
 import secrets
-import socket
 import subprocess
 import sys
 import threading
@@ -22,7 +21,7 @@ from resources import Resources
 
 
 ROOT = Path(__file__).resolve().parent
-VERSION = "4.1.0"
+VERSION = "4.1.1"
 DEFAULT_MODEL = {"provider": "DeepSeek", "base_url": "https://api.deepseek.com", "model": "deepseek-flash"}
 DEFAULT_PLUGINS = {"comfyui": {"enabled": False, "url": "http://127.0.0.1:8188", "checkpoint": ""},
                    "voicestudio": {"enabled": False, "url": "http://127.0.0.1:3900", "voice": "", "model": ""}}
@@ -101,6 +100,47 @@ def protect(data: bytes, decrypt=False) -> bytes:
 
 
 
+
+WEBVIEW2_CLIENT = "{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+WEBVIEW2_URL = "https://go.microsoft.com/fwlink/p/?LinkId=2124703"
+
+
+def webview2_version():
+    """返回已安装的 WebView2 Runtime 版本；未安装返回 None。
+
+    直接查 EdgeUpdate 的客户端注册项，比等 pywebview 抛异常再猜文案可靠。
+    """
+    import winreg
+
+    locations = (
+        (winreg.HKEY_LOCAL_MACHINE, rf"SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{WEBVIEW2_CLIENT}"),
+        (winreg.HKEY_LOCAL_MACHINE, rf"SOFTWARE\Microsoft\EdgeUpdate\Clients\{WEBVIEW2_CLIENT}"),
+        (winreg.HKEY_CURRENT_USER, rf"SOFTWARE\Microsoft\EdgeUpdate\Clients\{WEBVIEW2_CLIENT}"),
+    )
+    for root, path in locations:
+        try:
+            with winreg.OpenKey(root, path) as handle:
+                version, _ = winreg.QueryValueEx(handle, "pv")
+        except OSError:
+            continue
+        if isinstance(version, str) and version and version != "0.0.0.0":
+            return version
+    return None
+
+
+def require_webview2():
+    """没有 WebView2 就直接说明白，别让它退化成白屏或一句英文异常。"""
+    if webview2_version() is not None:
+        return
+    message = (
+        "Locomotive 需要 Microsoft Edge WebView2 运行时才能显示界面，\n"
+        "但这台电脑上没有检测到它。\n\n"
+        "安装后重新启动即可：\n" + WEBVIEW2_URL
+    )
+    ctypes.windll.user32.MessageBoxW(None, message, "Locomotive", 0x30 | 0x10000 | 0x40000)
+    raise SystemExit(2)
+
+
 def open_window(url: str, directory: Path):
     parsed = urllib.parse.urlsplit(url)
     if parsed.scheme != "http" or parsed.hostname != "127.0.0.1" or not parsed.port or parsed.path != "/" or parsed.username or parsed.query:
@@ -151,7 +191,7 @@ def show_startup_error(error):
 
 
 
-def make_config(ws_url: str, token: str, model=None, plugins=None, name="桃桃"):
+def make_config(ws_url: str, token: str, model=None, plugins=None, name="我的机器人"):
     result = {
         "onebot": {"ws_url": ws_url, "access_token": token},
         "deepseek": {"api_key": "", "base_url": "https://api.deepseek.com", "model": "deepseek-flash", "thinking": False},
@@ -186,8 +226,8 @@ class Controller:
         self.settings.setdefault("onebot", dict(DEFAULT_ONEBOT))
         persona_path = self.root_directory / "persona.txt"
         default_persona = persona_path.read_text("utf-8") if persona_path.exists() else (ROOT / "persona.txt").read_text("utf-8")
-        self.settings.setdefault("bots", [{"id": "taotao", "name": "桃桃", "persona": default_persona}])
-        self.settings.setdefault("selected_bot", "taotao")
+        self.settings.setdefault("bots", [{"id": "default", "name": "我的机器人", "persona": default_persona}])
+        self.settings.setdefault("selected_bot", "default")
         if not any(bot["id"] == self.settings["selected_bot"] for bot in self.settings["bots"]):
             self.settings["selected_bot"] = self.settings["bots"][0]["id"] if self.settings["bots"] else None
         self.directory = self.bot_directory(self.settings["selected_bot"]) if self.settings["selected_bot"] else self.root_directory
@@ -666,7 +706,7 @@ def self_test(report):
         directory = Path(temp)
         config = make_config("ws://127.0.0.1:3001", "test-token-only")
         write_json(directory / "config.json", config)
-        (directory / "persona.txt").write_text("你叫桃桃。", encoding="utf-8")
+        (directory / "persona.txt").write_text("你叫小北。", encoding="utf-8")
         cfg = Config.load(directory / "config.json")
         verify(not cfg.sticker_gen.prewarm and not cfg.imagegen.enable and not cfg.bot.summary_enabled, "Background calls enabled")
         verify(cfg.base_dir == directory, "Config data path mismatch")
@@ -728,19 +768,24 @@ def main():
         return check(args.desktop_self_test)
     if args.engine:
         return run_engine(args.data_dir)
-    instance = socket.socket()
     window = args.data_dir / "window.json"
-    try:
-        instance.bind(("127.0.0.1", 47202))
-        instance.listen(1)
-    except OSError:
-        instance.close()
+    # 命名互斥量做单实例锁：不受端口占用影响，进程退出由系统回收。
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateMutexW.restype = ctypes.c_void_p
+    kernel32.CreateMutexW.argtypes = (ctypes.c_void_p, ctypes.c_bool, ctypes.c_wchar_p)
+    kernel32.CloseHandle.argtypes = (ctypes.c_void_p,)
+    mutex = kernel32.CreateMutexW(None, False, "Local\\Locomotive.SingleInstance")
+    if not mutex:
+        raise OSError("无法创建单实例互斥量")
+    if ctypes.get_last_error() == 183:  # ERROR_ALREADY_EXISTS
+        kernel32.CloseHandle(mutex)
         reopen_window(window, args.data_dir)
         return 0
     controller = Controller(args.data_dir)
     server, url = serve(controller, open_browser=False)
     write_json(window, {"url": url, "pid": os.getpid()})
     threading.Thread(target=server.serve_forever, daemon=True).start()
+    require_webview2()
     try:
         import webview
         controller.window = open_window(url, args.data_dir)
@@ -754,7 +799,7 @@ def main():
         controller.stop()
         server.shutdown()
         server.server_close()
-        instance.close()
+        kernel32.CloseHandle(mutex)
         window.unlink(missing_ok=True)
     return 0
 
