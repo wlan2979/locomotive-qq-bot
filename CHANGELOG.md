@@ -4,6 +4,18 @@
 
 本仓库的发布历史从 **v4.0.0** 开始。此前的内部构建与测试版已全部下线，其版本记录、测试报告与发布包**不属于**本项目的发布历史，也不作为本版本的验证证据。
 
+## [4.1.2] - 2026-11-10
+
+许可证落地版。代码无功能变更。
+
+### 变更
+
+- **正式采用 [PolyForm Noncommercial License 1.0.0](LICENSE)**：除**商业用途**外，阅读、运行、修改、fork、分发、个人学习研究、非商业组织使用均被允许。
+- 新增 `LICENSE`（无扩展名）存放许可全文与 `Required Notice` 行。
+- 原 `LICENSE.md` 的状态说明迁到 [docs/licensing.md](docs/licensing.md)，补充「允许 / 禁止」清单、第三方组件许可表与历史沿革。
+- `CONTRIBUTING.md` 明确贡献授权：提交 PR 即表示同意以同一许可授权贡献。
+- 发布包内附 `LICENSE`。
+
 ## [4.1.1] - 2026-11-10
 
 代码审查反馈的修复版。
@@ -93,6 +105,7 @@
 - 每次只能连接一个机器人；绘图、语音合成与完整插件自动安装流程未实测。
 - 腾讯 QQ 账号风控风险，以及你自备协议端的许可约束，都不因本项目源码公开而改变。
 
+[4.1.2]: https://github.com/wlan2979/locomotive-qq-bot/releases/tag/v4.1.2
 [4.1.1]: https://github.com/wlan2979/locomotive-qq-bot/releases/tag/v4.1.1
 [4.1.0]: https://github.com/wlan2979/locomotive-qq-bot/releases/tag/v4.1.0
 [4.0.0]: https://github.com/wlan2979/locomotive-qq-bot/releases/tag/v4.0.0

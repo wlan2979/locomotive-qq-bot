@@ -4,13 +4,13 @@ Windows 桌面应用，用于创建、配置和连接 QQ 机器人。自己填�
 
 本软件是**通用 OneBot 11 客户端**：不做 QQ 登录、不显示二维码，也不下载或启动任何协议端。你需要自备一个已登录的 OneBot 11 兼容协议端，把它的 WebSocket 地址与访问令牌填进来。
 
-> **v4.1.1 · 源码与 Windows 二进制均已发布**
+> **v4.1.2 · 源码与 Windows 二进制均已发布**
 
-[更新日志](CHANGELOG.md) · [许可状态](LICENSE.md) · [安全说明](SECURITY.md) · [贡献指南](CONTRIBUTING.md)
+[更新日志](CHANGELOG.md) · [许可证](LICENSE) · [安全说明](SECURITY.md) · [贡献指南](CONTRIBUTING.md)
 
 ---
 
-> ⚠️ **源码可读 ≠ 已开源授权。** 源码已公开，但**尚未授予正式开源许可证**，详见 [LICENSE.md](LICENSE.md)。
+> ✅ **许可证已明确**：采用 [PolyForm Noncommercial 1.0.0](LICENSE) —— **除商业用途外，其他都允许**。通俗说明见 [docs/licensing.md](docs/licensing.md)。
 > ⚠️ **非商业项目**：不收费、无广告与赞助、不用于为任何收费项目引流获客。这是本项目的主动定位。你自备的协议端可能另有其自身的非商用限制，使用前请自行确认。
 
 ## 当前状态
@@ -18,23 +18,23 @@ Windows 桌面应用，用于创建、配置和连接 QQ 机器人。自己填�
 | 项 | 状态 |
 | --- | --- |
 | 应用源码 | ✅ 已公开（`src/`，30 个源码文件，不含构建产物） |
-| 二进制安装包 | ✅ [Locomotive-v4.1.1-Windows-x64.zip](https://github.com/wlan2979/locomotive-qq-bot/releases/download/v4.1.1/Locomotive-v4.1.1-Windows-x64.zip)（22,435,811 字节） |
-| 版本号 | `4.1.1`（`src/app.py` 的 `VERSION`） |
+| 二进制安装包 | ✅ [Locomotive-v4.1.2-Windows-x64.zip](https://github.com/wlan2979/locomotive-qq-bot/releases/download/v4.1.2/Locomotive-v4.1.2-Windows-x64.zip)（22,439,899 字节） |
+| 版本号 | `4.1.2`（`src/app.py` 的 `VERSION`） |
 | 仓库历史 | 已重置为**单一初始提交**，v4.0.0 是唯一版本起点 |
 | 全新环境验证 | ❌ 未做。`requirements.txt` 取自原构建环境，最小可用集合未验证 |
-| 正式开源许可证 | ❌ 未授予 |
+| 许可证 | ✅ PolyForm Noncommercial 1.0.0（除商业用途外均允许） |
 | 协议层解耦 | ✅ 已完成（标准 OneBot 11 客户端） |
 | 真实链路验证 | ⚠️ 单次冒烟通过（2026-11-10，本机 OneBot 11 协议端 + 真实 QQ 群 + DeepSeek），未覆盖多轮/图片/重连 |
 
 ## 下载
 
-**[Locomotive-v4.1.1-Windows-x64.zip](https://github.com/wlan2979/locomotive-qq-bot/releases/download/v4.1.1/Locomotive-v4.1.1-Windows-x64.zip)**（22,435,811 字节）
+**[Locomotive-v4.1.2-Windows-x64.zip](https://github.com/wlan2979/locomotive-qq-bot/releases/download/v4.1.2/Locomotive-v4.1.2-Windows-x64.zip)**（22,439,899 字节）
 
 ```text
-SHA-256  e08635de085afa6c31f3b3e76c26ae6c21b3d08a6340ab8cd67088ad28fa81b9
+SHA-256  9e6d683a80339658e5384ddffbc7d4de7e2b1d09e7800137e2d4c3476c5c978a
 ```
 
-解压后得到 `Locomotive/` 目录，含 `Locomotive.exe`（22,626,102 字节）、`Locomotive-使用说明.txt`、`THIRD_PARTY_NOTICES.txt`。
+解压后得到 `Locomotive/` 目录，含 `Locomotive.exe`（22,628,241 字节）、`Locomotive-使用说明.txt`、`THIRD_PARTY_NOTICES.txt`、`LICENSE`。
 
 运行前需要 Microsoft Edge WebView2 运行时，并自备一个已登录的 OneBot 11 兼容协议端。
 
@@ -100,7 +100,7 @@ cd src
 python -m unittest discover -p "test_*.py" -q
 ```
 
-另附 `test_frozen_engine.py`（模拟 QQ / 模型服务的收发与停止）、`desktop_check.py`（原生窗口）。运行前确认没有真实机器人占用引擎端口。**旧版本留下的测试报告不能作为 v4.1.1 的验证证据。**
+另附 `test_frozen_engine.py`（模拟 QQ / 模型服务的收发与停止）、`desktop_check.py`（原生窗口）。运行前确认没有真实机器人占用引擎端口。**旧版本留下的测试报告不能作为 v4.1.2 的验证证据。**
 
 ## 源码结构
 
@@ -170,13 +170,13 @@ python -m unittest discover -p "test_*.py" -q
 
 ## 路线图
 
-- [x] 核对各上游许可证原文（2026-11-10，结论见 [LICENSE.md](LICENSE.md)）
+- [x] 核对各上游许可证原文（2026-11-10，结论见 [docs/licensing.md](docs/licensing.md)）
 - [x] 公开应用源码，仓库历史重置为 v4.0.0 单一初始提交
 - [x] 补齐第三方许可声明与 LGPL 依赖源码说明，修正第三方声明措辞
 - [x] **协议层解耦**：移除内置协议端的自动下载 / 配置 / 启动，改为通用 OneBot 11 客户端，用户自备兼容协议端并填写 WebSocket 地址与 Token
 - [x] 裁剪 `bot/` 中的历史遗留模块：抖音、手机自动化、视频生成、灵感库共 9 个文件已移除，`bot/` 降到 16 个模块
 - [ ] 全新环境端到端验证，补 WebView2 缺失提示
-- [x] 打包并发布二进制版本（v4.1.1，SHA-256 已写入 Release 与 README）
+- [x] 打包并发布二进制版本（v4.1.2，SHA-256 已写入 Release 与 README）
 - [ ] 数据导出：把人设、记忆、设置导出为通用格式，降低迁移成本
 - [ ] 补作者声明，确定正式开源许可证
 
@@ -186,8 +186,13 @@ python -m unittest discover -p "test_*.py" -q
 
 ## 许可
 
-**尚未授予应用代码的开源许可**。源码可阅读、可为本机试用而运行与构建，但在正式 `LICENSE` 发布前，请勿再分发、商用或替本项目指定许可证。**本项目为非商业项目**：不收费、不含广告与赞助、不用于为任何收费项目引流获客；软件内不提供协议端下载链接、安装向导或内嵌跳转。
+本项目采用 **[PolyForm Noncommercial License 1.0.0](LICENSE)**：**除商业用途外，其他都允许**。
 
-完整结论、上游组件清单与非商业定位见 [LICENSE.md](LICENSE.md)。
+- **允许**：阅读、运行、修改、fork、分发（需附许可全文或链接，以及 `Required Notice` 行）、个人学习与研究、非商业组织使用
+- **禁止**：任何商业用途（收费、广告变现、集成进商业产品、为商业项目引流）、移除 `Required Notice`、再授权
+
+**本项目是非商业项目**：不收费、不含广告与赞助、不用于为任何收费项目引流获客；软件内不提供协议端下载链接、安装向导或内嵌跳转。
+
+通俗说明、第三方组件清单与历史沿革见 [docs/licensing.md](docs/licensing.md)。
 
 本项目使用的第三方组件：[ComfyUI](https://github.com/Comfy-Org/ComfyUI) · [VoiceStudio](https://github.com/debpalash/VoiceStudio)
