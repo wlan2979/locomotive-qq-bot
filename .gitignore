@@ -202,6 +202,9 @@ logs/
 *.db
 *.sqlite3
 
+# 测试与构建产物
+frozen-engine-test/
+
 # 本机开发与构建产物
 __pycache__/
 *.pyc
