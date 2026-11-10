@@ -5,8 +5,10 @@ import argparse
 import asyncio
 import base64
 import ctypes
+import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import secrets
 import subprocess
@@ -21,7 +23,7 @@ from resources import Resources
 
 
 ROOT = Path(__file__).resolve().parent
-VERSION = "4.1.2"
+VERSION = "4.1.3"
 DEFAULT_MODEL = {"provider": "DeepSeek", "base_url": "https://api.deepseek.com", "model": "deepseek-flash"}
 DEFAULT_PLUGINS = {"comfyui": {"enabled": False, "url": "http://127.0.0.1:8188", "checkpoint": ""},
                    "voicestudio": {"enabled": False, "url": "http://127.0.0.1:3900", "voice": "", "model": ""}}
@@ -47,6 +49,40 @@ def endpoint(value, local_only=False):
         raise ValueError("资源接口请使用本机地址；远程模型接口请使用 HTTPS。")
     parsed.port
     return value.strip().rstrip("/")
+
+
+
+RELEASE_FEED = "https://github.com/wlan2979/locomotive-qq-bot/releases.atom"
+
+
+def _version_tuple(text):
+    try:
+        return tuple(int(part) for part in text.split("."))
+    except (AttributeError, ValueError):
+        return ()
+
+
+def parse_release_version(text):
+    """从 releases.atom 里取最新版本号。第一个 title 是 feed 标题，要跳过。"""
+    for title in re.findall(r"<title>([^<]+)</title>", text or "")[1:]:
+        match = re.search(r"v?(\d+\.\d+\.\d+)", title)
+        if match:
+            return match.group(1)
+    return None
+
+
+def latest_release_version(timeout=3.0):
+    """查 GitHub Releases 的最新版本号；任何失败都返回 None，不影响启动。
+
+    只读取公开的 releases.atom，不发送任何本地数据。默认走系统代理。
+    """
+    request = urllib.request.Request(RELEASE_FEED, headers={"User-Agent": "Locomotive/" + VERSION})
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            text = response.read(300_000).decode("utf-8", "replace")
+    except (OSError, ValueError):
+        return None
+    return parse_release_version(text)
 
 
 def onebot_endpoint(value):
@@ -243,6 +279,14 @@ class Controller:
         self.stopping = False
         self.model_for_run = dict(self.settings["model"])
         self.window = None
+        self.latest_version = None
+
+    def check_updates(self):
+        """后台查一次最新版本；比当前新就记下来，供界面提示。"""
+        latest = latest_release_version()
+        if latest and _version_tuple(latest) > _version_tuple(VERSION):
+            self.latest_version = latest
+            self.update()
 
     def bot_directory(self, bot_id):
         if not isinstance(bot_id, str) or not bot_id or any(c not in "abcdefghijklmnopqrstuvwxyz0123456789_-" for c in bot_id):
@@ -385,7 +429,7 @@ class Controller:
             return {**self.state, "saved_key": bool(self.settings.get("key")), "model": dict(self.settings["model"]),
                     "bots": [{"id": bot["id"], "name": bot["name"]} for bot in self.settings["bots"]],
                     "bot": dict(self.selected_bot()) if self.selected_bot() else None,
-                    "onebot": {"ws_url": self.settings["onebot"]["ws_url"], "token_saved": bool(self.settings["onebot"].get("access_token"))}, "plugins": json.loads(json.dumps(self.settings["plugins"])),
+                    "onebot": {"ws_url": self.settings["onebot"]["ws_url"], "token_saved": bool(self.settings["onebot"].get("access_token"))}, "latest_version": self.latest_version, "plugins": json.loads(json.dumps(self.settings["plugins"])),
                     "resources": self.resources.snapshot(), "version": VERSION}
 
     def start(self, api_key: str):
@@ -774,7 +818,9 @@ def main():
     kernel32.CreateMutexW.restype = ctypes.c_void_p
     kernel32.CreateMutexW.argtypes = (ctypes.c_void_p, ctypes.c_bool, ctypes.c_wchar_p)
     kernel32.CloseHandle.argtypes = (ctypes.c_void_p,)
-    mutex = kernel32.CreateMutexW(None, False, "Local\\Locomotive.SingleInstance")
+    # 锁按数据目录区分：同一个 data-dir 严格单实例，不同 data-dir 可以并行多开。
+    key = hashlib.sha256(str(args.data_dir.resolve()).encode("utf-8")).hexdigest()[:16]
+    mutex = kernel32.CreateMutexW(None, False, f"Local\\Locomotive.{key}")
     if not mutex:
         raise OSError("无法创建单实例互斥量")
     if ctypes.get_last_error() == 183:  # ERROR_ALREADY_EXISTS
@@ -782,6 +828,7 @@ def main():
         reopen_window(window, args.data_dir)
         return 0
     controller = Controller(args.data_dir)
+    threading.Thread(target=controller.check_updates, daemon=True).start()
     server, url = serve(controller, open_browser=False)
     write_json(window, {"url": url, "pid": os.getpid()})
     threading.Thread(target=server.serve_forever, daemon=True).start()

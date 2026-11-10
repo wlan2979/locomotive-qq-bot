@@ -28,6 +28,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Import check
+        working-directory: src
+        run: python -c "import app; print('import ok, version', app.VERSION)"
+
       - name: Run unit tests
         working-directory: src
         run: python -m unittest discover -p "test_*.py" -v

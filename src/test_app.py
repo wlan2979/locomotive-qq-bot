@@ -111,6 +111,15 @@ class AppTests(unittest.TestCase):
             self.assertEqual(config["deepseek"]["api_key"], "")
             self.assertEqual(config["onebot"]["ws_url"], "ws://127.0.0.1:3001")
 
+    def test_release_feed_version_parsing(self):
+        feed = ('<feed><title>Release notes from locomotive-qq-bot</title>'
+                '<entry><title>v9.9.9</title></entry><entry><title>v9.9.8</title></entry></feed>')
+        self.assertEqual(app.parse_release_version(feed), "9.9.9")
+        self.assertIsNone(app.parse_release_version("<feed><title>no entries</title></feed>"))
+        self.assertIsNone(app.parse_release_version(""))
+        self.assertTrue(app._version_tuple("4.1.10") > app._version_tuple("4.1.9"))
+        self.assertEqual(app._version_tuple("bad"), ())
+
     def test_webview2_probe_is_explicit(self):
         version = app.webview2_version()
         self.assertTrue(version is None or isinstance(version, str))
