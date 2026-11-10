@@ -23,7 +23,7 @@ from resources import Resources
 
 
 ROOT = Path(__file__).resolve().parent
-VERSION = "4.1.3"
+VERSION = "4.1.4"
 DEFAULT_MODEL = {"provider": "DeepSeek", "base_url": "https://api.deepseek.com", "model": "deepseek-flash"}
 DEFAULT_PLUGINS = {"comfyui": {"enabled": False, "url": "http://127.0.0.1:8188", "checkpoint": ""},
                    "voicestudio": {"enabled": False, "url": "http://127.0.0.1:3900", "voice": "", "model": ""}}
@@ -649,6 +649,22 @@ def serve(controller, open_browser=True):
                 return self.send({"error": "请从程序打开的窗口访问。"}, 403)
             if self.path == "/state":
                 return self.send(controller.snapshot())
+            if self.path.startswith("/logs"):
+                query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+                try:
+                    tail = max(20, min(2000, int(query.get("tail", ["200"])[0])))
+                except (TypeError, ValueError):
+                    tail = 200
+                path = controller.directory / "bot-process.log"
+                text = ""
+                if path.is_file():
+                    with path.open("rb") as handle:
+                        handle.seek(0, os.SEEK_END)
+                        size = handle.tell()
+                        handle.seek(max(0, size - 400_000))
+                        text = handle.read().decode("utf-8", "replace")
+                return self.send({"lines": text.splitlines()[-tail:], "path": str(path),
+                                  "exists": path.is_file()})
             return self.send({"error": "未找到页面"}, 404)
 
         def do_POST(self):
@@ -676,6 +692,9 @@ def serve(controller, open_browser=True):
                     controller.save_plugins(body)
                 elif self.path == "/onebot/save":
                     result = controller.save_onebot(body)
+                elif self.path == "/open-data-dir":
+                    os.startfile(str(controller.directory))
+                    result = {"message": "已打开数据目录。"}
                 elif self.path in ("/plugins/install", "/plugins/probe", "/plugins/start"):
                     name = body.get("name")
                     if name not in DEFAULT_PLUGINS:

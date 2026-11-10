@@ -111,6 +111,26 @@ class AppTests(unittest.TestCase):
             self.assertEqual(config["deepseek"]["api_key"], "")
             self.assertEqual(config["onebot"]["ws_url"], "ws://127.0.0.1:3001")
 
+    def test_logs_endpoint_returns_tail(self):
+        with tempfile.TemporaryDirectory() as temp:
+            controller = app.Controller(Path(temp))
+            log = controller.directory / "bot-process.log"
+            log.parent.mkdir(parents=True, exist_ok=True)
+            log.write_text("\n".join(f"line {i}" for i in range(500)), encoding="utf-8")
+            server, url = app.serve(controller, open_browser=False)
+            threading.Thread(target=server.serve_forever, daemon=True).start()
+            base, session = url.split("#")
+            try:
+                request = urllib.request.Request(base + "logs?tail=50", headers={"X-Session": session})
+                with urllib.request.urlopen(request, timeout=5) as response:
+                    data = json.load(response)
+                self.assertTrue(data["exists"])
+                self.assertEqual(len(data["lines"]), 50)
+                self.assertEqual(data["lines"][-1], "line 499")
+            finally:
+                server.shutdown()
+                server.server_close()
+
     def test_release_feed_version_parsing(self):
         feed = ('<feed><title>Release notes from locomotive-qq-bot</title>'
                 '<entry><title>v9.9.9</title></entry><entry><title>v9.9.8</title></entry></feed>')

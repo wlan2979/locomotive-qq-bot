@@ -4,6 +4,13 @@
 
 本仓库的发布历史从 **v4.0.0** 开始。此前的内部构建与测试版已全部下线，其版本记录、测试报告与发布包**不属于**本项目的发布历史，也不作为本版本的验证证据。
 
+## [4.1.4] - 2026-11-10
+
+### 新增
+
+- **日志页**：侧栏第四项，显示 `bot-process.log` 尾部 300 行，`ERROR` 标红、`WARNING` 标橙，在日志页时每 2 秒自动刷新；附「打开数据目录」按钮。此前出错只能自己去翻文件，引擎里「连续失败 5 次升 ERROR 并写清处置办法」的逻辑用户根本看不到。
+- `/logs` 与 `/open-data-dir` 两个本地接口；日志用 `textContent` 逐行渲染，避免聊天内容被当成 HTML。
+
 ## [4.1.3] - 2026-11-10
 
 ### 新增
@@ -122,6 +129,7 @@
 - 每次只能连接一个机器人；绘图、语音合成与完整插件自动安装流程未实测。
 - 腾讯 QQ 账号风控风险，以及你自备协议端的许可约束，都不因本项目源码公开而改变。
 
+[4.1.4]: https://github.com/wlan2979/locomotive-qq-bot/releases/tag/v4.1.4
 [4.1.3]: https://github.com/wlan2979/locomotive-qq-bot/releases/tag/v4.1.3
 [4.1.2]: https://github.com/wlan2979/locomotive-qq-bot/releases/tag/v4.1.2
 [4.1.1]: https://github.com/wlan2979/locomotive-qq-bot/releases/tag/v4.1.1
