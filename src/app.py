@@ -642,6 +642,23 @@ class Controller:
 
 
 
+def _note(data_dir: Path, text: str) -> None:
+    """记一行守护日志。
+
+    写文件用 UTF-8，一定成功；stdout 只在编码支持时才打 —— CI 的 stdout
+    是 cp1252，直接 print 中文会抛 UnicodeEncodeError 把进程带崩。
+    """
+    try:
+        with (data_dir / "supervise.log").open("a", encoding="utf-8") as handle:
+            handle.write(time.strftime("%Y-%m-%d %H:%M:%S ") + text + "\n")
+    except OSError:
+        pass
+    try:
+        print(text, flush=True)
+    except UnicodeEncodeError:
+        pass
+
+
 def supervise(data_dir: Path):
     """守护 --engine 子进程：退出就重启，退避 3 → 6 → 12 → 30 → 60 秒。
 
@@ -654,7 +671,7 @@ def supervise(data_dir: Path):
     delay = 3.0
     while True:
         if stop.exists():
-            print("检测到 engine-stop，守护进程退出。", flush=True)
+            _note(data_dir, "检测到 engine-stop，守护进程退出。")
             return 0
         arguments = [sys.executable] if getattr(sys, "frozen", False) else [sys.executable, str(Path(__file__).resolve())]
         child = subprocess.Popen(arguments + ["--engine", "--data-dir", str(data_dir)],
@@ -671,12 +688,12 @@ def supervise(data_dir: Path):
                 child.kill()
             return 0
         if stop.exists():
-            print("检测到 engine-stop，守护进程退出。", flush=True)
+            _note(data_dir, "检测到 engine-stop，守护进程退出。")
             return 0
         ran = time.monotonic() - started
         if ran >= 60:
             delay = 3.0
-        print(f"引擎退出（退出码 {child.returncode}，运行 {ran:.0f} 秒），{delay:.0f} 秒后重启…", flush=True)
+        _note(data_dir, f"引擎退出（退出码 {child.returncode}，运行 {ran:.0f} 秒），{delay:.0f} 秒后重启…")
         time.sleep(delay)
         delay = min(delay * 2, 60.0)
 

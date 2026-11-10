@@ -19,6 +19,7 @@ v4.0.0 起应用源码在 `src/`，**欢迎提交代码 PR**。但请先知道�
 - **同一 tag 的 Release 资产只上传一次。** 发现缺陷就发新的 patch 版本，不改旧资产 —— 否则哈希失去校验意义，issue 也无法定位到具体代码。
 - 发版顺序固定：改 `VERSION` → 提交 → 打 tag → 发 Release。tag 必须指向版本号所在的那个提交。
 - SHA-256 与文件大小写进 Release 说明和 README，两处必须一致。
+- **CI 未绿不打 tag、不发 Release。** 本地测试通过不等于 CI 通过 —— CI 的 stdout 是 cp1252、临时目录是 8.3 短名，这两类问题本地复现不了。发布前确认对应提交的 `tests` workflow 是 success。
 
 ## 提交 PR
 

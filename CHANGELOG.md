@@ -78,7 +78,7 @@
 
 - **WebView2 改为启动前主动探测**：读 `EdgeUpdate\Clients` 注册项，缺了直接弹窗给出下载地址并退出。不再依赖异常文本关键字匹配——那种做法在 pywebview 或系统语言变化后会失效，退化成白屏。
 - **单实例锁改用命名互斥量**：原来绑定 `127.0.0.1:47202`，端口被无关程序占用时会误判为「已有实例」，行为不可预期。现在用 `CreateMutexW` + `ERROR_ALREADY_EXISTS`。
-- **新装默认机器人改名**：旧版默认机器人改为 `我的机器人 / default`。旧数据不受影响（旧 id 会自动迁移到 `default`，数据仍在数据目录根）。
+- **新装默认机器人改名**：旧版默认机器人改为 `我的机器人 / default`。旧配置里的旧 id 仍映射到数据目录根，暂时不影响已有数据（真正的 id 迁移在 v4.2.0）。
 
 ### 文档
 
@@ -123,6 +123,8 @@
 
 ## [4.0.0] - 2026-11-10
 
+> 该版本的 tag 与 Release 已于 v4.1.0 下线，下面的链接只到 v4.1.0 起有效。
+
 首个公开版本。仓库历史重置为此单一初始提交。
 
 ### 新增
@@ -136,7 +138,6 @@
 
 ### 变更
 
-- **移除历史遗留模块**：删除抖音发布/评论/调度、手机自动化、视频生成、灵感库共 9 个模块，以及 `core.py` 中对应的工具注册、执行分支、定时循环和主动发言逻辑；配置里的 `phone` / `hands` / `douyin` / `seedance` 四段全部移除。`bot/` 从 24 个模块降到 16 个。现在只保留 QQ 聊天相关能力。
 - **协议层解耦**：移除内置协议端的自动下载、解压、配置与启动，以及二维码登录流程、端口与访问令牌自动生成和对应插件卡片。产品改为标准 OneBot 11 正向 WebSocket 客户端，由用户自备兼容协议端并填写 WebSocket 地址与访问令牌。
 - 新增「OneBot 11 连接」设置与 `/onebot/save` 接口；访问令牌只存本机，不回传界面。
 - 下线此前的全部 Release 与 tag，删除仓库历史中的 23MB 二进制发布包。
@@ -166,4 +167,3 @@
 [4.1.2]: https://github.com/wlan2979/locomotive-qq-bot/releases/tag/v4.1.2
 [4.1.1]: https://github.com/wlan2979/locomotive-qq-bot/releases/tag/v4.1.1
 [4.1.0]: https://github.com/wlan2979/locomotive-qq-bot/releases/tag/v4.1.0
-[4.0.0]: https://github.com/wlan2979/locomotive-qq-bot/releases/tag/v4.0.0
