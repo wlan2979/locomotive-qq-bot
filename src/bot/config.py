@@ -356,7 +356,7 @@ class ImageGenConfig:
     #
     # 代价：**机器得开着**。所以这条通道**永远带降级** ——
     # 探测不到 ComfyUI、出图超时、图解不开，一律退回 A / B，不让用户干等。
-    comfyui_enable: bool = True
+    comfyui_enable: bool = False
     local_only: bool = False
     comfyui_url: str = "http://127.0.0.1:8188"
     # 采样参数。Illustrious XL 这套是社区常用值，效果不好就改。

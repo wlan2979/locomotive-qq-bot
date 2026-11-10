@@ -133,7 +133,14 @@ def reopen_window(window: Path, directory: Path):
 def show_startup_error(error):
     directory = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "TaoTaoBot"
     detail = str(error) or type(error).__name__
-    message = "Locomotive 未能启动。\n\n" + detail[:600]
+    lowered = detail.lower()
+    if any(k in lowered for k in ("webview", "edgechromium", "mshtml", "runtime")):
+        hint = ("\n\n这通常是缺少 Microsoft Edge WebView2 运行时。\n"
+                "安装后重新启动即可：https://go.microsoft.com/fwlink/p/?LinkId=2124703")
+    else:
+        hint = ("\n\n如果窗口一直没有出现，请先确认 Microsoft Edge WebView2 运行时已安装：\n"
+                "https://go.microsoft.com/fwlink/p/?LinkId=2124703")
+    message = "Locomotive 未能启动。\n\n" + detail[:600] + hint
     try:
         directory.mkdir(parents=True, exist_ok=True)
         with (directory / "startup.log").open("a", encoding="utf-8") as output:

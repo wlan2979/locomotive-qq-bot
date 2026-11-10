@@ -18,7 +18,7 @@ Windows 桌面应用，用于创建、配置和连接 QQ 机器人。自己填�
 | 项 | 状态 |
 | --- | --- |
 | 应用源码 | ✅ 已公开（`src/`，40 个文件） |
-| 二进制安装包 | ✅ [Locomotive-v4.0.0-Windows-x64.zip](https://github.com/wlan2979/locomotive-qq-bot/releases/download/v4.0.0/Locomotive-v4.0.0-Windows-x64.zip)（22,434,663 字节） |
+| 二进制安装包 | ✅ [Locomotive-v4.0.0-Windows-x64.zip](https://github.com/wlan2979/locomotive-qq-bot/releases/download/v4.0.0/Locomotive-v4.0.0-Windows-x64.zip)（22,434,176 字节） |
 | 版本号 | `4.0.0`（`src/app.py` 的 `VERSION`） |
 | 仓库历史 | 已重置为**单一初始提交**，v4.0.0 是唯一版本起点 |
 | 全新环境验证 | ❌ 未做。`requirements.txt` 取自原构建环境，最小可用集合未验证 |
@@ -28,13 +28,13 @@ Windows 桌面应用，用于创建、配置和连接 QQ 机器人。自己填�
 
 ## 下载
 
-**[Locomotive-v4.0.0-Windows-x64.zip](https://github.com/wlan2979/locomotive-qq-bot/releases/download/v4.0.0/Locomotive-v4.0.0-Windows-x64.zip)**（22,434,663 字节）
+**[Locomotive-v4.0.0-Windows-x64.zip](https://github.com/wlan2979/locomotive-qq-bot/releases/download/v4.0.0/Locomotive-v4.0.0-Windows-x64.zip)**（22,434,176 字节）
 
 ```text
-SHA-256  ca25e84a4580690403f64e456ca379fc30968b451b7d607139dfbeb091627da5
+SHA-256  6651b9d3163aa1c8f5e00f0cc8b48b39bb91a08f20560d0c80b2107efd0362ab
 ```
 
-解压后得到 `Locomotive/` 目录，含 `Locomotive.exe`（22,623,006 字节）、`Locomotive-使用说明.txt`、`THIRD_PARTY_NOTICES.txt`。
+解压后得到 `Locomotive/` 目录，含 `Locomotive.exe`（22,622,930 字节）、`Locomotive-使用说明.txt`、`THIRD_PARTY_NOTICES.txt`。
 
 运行前需要 Microsoft Edge WebView2 运行时，并自备一个已登录的 OneBot 11 兼容协议端。
 
@@ -78,6 +78,20 @@ python -m PyInstaller --noconfirm Locomotive.spec
 ```
 
 `Locomotive.spec` 已改为全相对路径，迁移机器无需改动。
+
+## 无头运行（不打开窗口）
+
+桌面程序关窗即退出，这是它的形态。如果你希望它常驻后台，用引擎模式：
+
+```bat
+Locomotive.exe --engine --data-dir "%LOCALAPPDATA%\TaoTaoBot"
+```
+
+这个模式不创建窗口，只跑 OneBot 连接和聊天引擎；日志写到数据目录的 `bot-process.log`。停止方式：在数据目录下创建一个空文件 `engine-stop`，进程会优雅退出并保存历史。
+
+想开机自启，用「任务计划程序」：触发器设为登录时，操作填 `Locomotive.exe`，参数 `--engine --data-dir "<你的数据目录>"`。注意 DPAPI 密钥绑定当前 Windows 账户，别换账户运行。
+
+**这个模式没有托盘、没有自动重启**。进程崩了不会自己起来，需要任务计划的「失败后重新启动」，或第三方守护工具。
 
 ## 测试
 
@@ -136,6 +150,13 @@ python -m unittest discover -p "test_*.py" -q
 
 **怎么自己打包？** 见上文「打包」，`src/Locomotive.spec` 是全相对路径的。
 
+## 已知取舍
+
+- **形态**：桌面 GUI 单体进程，关窗即停，没有守护与看门狗。这是「看得见的桌面工作台」这个定位带来的代价，改成常驻服务等于重写 UI 层。无头场景请用上面的 `--engine` 模式。
+- **数据可迁移性**：人设、记忆、设置存在 `%LOCALAPPDATA%\TaoTaoBot` 的私有结构里，与内部 config schema 绑定，**目前没有导出功能**。想迁到其他机器人框架只能手工重建。
+- **平台**：Windows 独占，依赖 WebView2 运行时。缺失时启动会弹窗提示并写入 `startup.log`，但不会自动安装。
+- **维护**：单人项目，issue 与第三方验证都很少，遇到问题主要靠读源码。
+
 ## 路线图
 
 - [x] 核对各上游许可证原文（2026-11-10，结论见 [LICENSE.md](LICENSE.md)）
@@ -145,6 +166,7 @@ python -m unittest discover -p "test_*.py" -q
 - [x] 裁剪 `bot/` 中的历史遗留模块：抖音、手机自动化、视频生成、灵感库共 9 个文件已移除，`bot/` 降到 16 个模块
 - [ ] 全新环境端到端验证，补 WebView2 缺失提示
 - [x] 打包并发布第一个可用二进制版本（v4.0.0，SHA-256 已写入 Release 与 README）
+- [ ] 数据导出：把人设、记忆、设置导出为通用格式，降低迁移成本
 - [ ] 补作者声明，确定正式开源许可证
 
 ## 反馈与贡献
