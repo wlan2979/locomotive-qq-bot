@@ -1,0 +1,8 @@
+{
+  "passed": true,
+  "real_qq_used": false,
+  "paid_api_called": false,
+  "fake_chat_roundtrip": true,
+  "graceful_stop": true,
+  "history_saved": true
+}
