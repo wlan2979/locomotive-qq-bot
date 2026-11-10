@@ -9,7 +9,7 @@ Windows 桌面应用，用于创建、配置和连接 QQ 机器人。自己填�
 ---
 
 > ⚠️ **源码可读 ≠ 已开源授权。** 源码已公开，但**尚未授予正式开源许可证**，详见 [LICENSE.md](LICENSE.md)。
-> ⚠️ **非商业项目**：不收费、无广告与赞助、不用于为任何收费项目引流获客。底层 NapCat 的许可第 3 条明写「不得用于任何商业目的」。
+> ⚠️ **非商业项目**：不收费、无广告与赞助、不用于为任何收费项目引流获客。这是本项目的主动定位。你自备的协议端可能另有其自身的非商用限制，使用前请自行确认。
 
 ## 当前状态
 
@@ -22,7 +22,7 @@ Windows 桌面应用，用于创建、配置和连接 QQ 机器人。自己填�
 | 全新环境验证 | ❌ 未做。`requirements.txt` 取自原构建环境，最小可用集合未验证 |
 | 正式开源许可证 | ❌ 未授予 |
 | 协议层解耦 | ✅ 已完成（标准 OneBot 11 客户端） |
-| 真实链路验证 | ✅ 2026-11-10 用本机 NapCat 4.18.28（OneBot 11）+ 真实 QQ 群 + DeepSeek 完成收发 |
+| 真实链路验证 | ✅ 2026-11-10 用本机 OneBot 11 协议端 + 真实 QQ 群 + DeepSeek 完成收发 |
 
 ## 下载
 
@@ -38,15 +38,15 @@ SHA-256  92e2da471fda3b6658be3fb112331798bcb74e161050c0824d38b664f45509bc
 
 ## 已解耦：不下载、不安装、不启动任何协议端
 
-v4.0.0 起，Locomotive 是标准的 **OneBot 11 正向 WebSocket 客户端**。它不下载、不安装、不配置、不启动 NapCat 或任何其他协议实现。
+v4.0.0 起，Locomotive 是标准的 **OneBot 11 正向 WebSocket 客户端**。它不下载、不安装、不配置、不启动任何协议端实现。
 
 你需要自己准备一个兼容 OneBot 11 的协议端，登录你的 QQ 账号，把它的 WebSocket 地址与访问令牌填进本工作台。
 
-- **移除的代码**：`prepare_runtime()`（自动下载 124MB 组件）、`launch_qq()`（启动 `node.exe`）、`class Napcat`（WebUI 控制）、二维码轮询与生成、端口与令牌自动分配、NapCat 插件卡片。
+- **移除的能力**：内置协议端的自动下载、解压、配置与启动，二维码登录流程，端口与访问令牌自动分配，以及对应的插件卡片。
 - **新增**：「OneBot 11 连接」设置区，填写 `ws://...` 与可选访问令牌；`save_onebot()` 只写入本机设置，令牌不回传到界面。
 - **自检**：新增「`setup()` 不触碰任何第三方配置目录」与「OneBot 地址校验」用例。
 
-上游 NapCat 的 [Limited Redistribution License](https://github.com/NapNeko/NapCatQQ/blob/v4.18.42/LICENSE) 仍然约束**你自己**对它的使用，包括**禁止任何商业用途**。许可全文在 `src/THIRD_PARTY_NOTICES.txt`。
+你自备的协议端适用其**自身**许可，可能包含非商用或其他限制，请在使用前自行确认。`src/THIRD_PARTY_NOTICES.txt` 里附了本软件实际打包的第三方组件声明。
 
 ## 从源码运行
 
@@ -96,7 +96,7 @@ python -m unittest discover -p "test_*.py" -q
 | `src/bot/llm.py` | 模型请求、供应商兼容与网络代理处理 |
 | `src/bot/config.py` | 引擎配置结构（已含 `ws_url` / `access_token`） |
 | `src/Locomotive.spec` | PyInstaller 打包配置（相对路径） |
-| `src/THIRD_PARTY_NOTICES.txt` | 第三方许可全文、NapCat 许可、LGPL 源码获取说明 |
+| `src/THIRD_PARTY_NOTICES.txt` | 第三方许可全文、LGPL 依赖源码获取说明 |
 | `requirements.txt` | 运行与打包依赖 |
 
 ## 历史遗留模块（不是 v4 功能）
@@ -110,12 +110,26 @@ python -m unittest discover -p "test_*.py" -q
 - 本机 HTTP 服务只监听回环地址，界面请求带会话标识并校验来源；`window.json` 中的 URL 含会话凭据，不要外贴。
 - 漏洞报告走 [SECURITY.md](SECURITY.md) 的私有渠道，别开公开 Issue 贴凭据。
 
+## 常见问题
+
+**连接失败 / 一直显示「正在连接 OneBot 服务」？** 见 [OneBot 11 接入指南](docs/ONEBOT-SETUP.md)。最常见的三个原因：协议端没运行、没开启正向 WebSocket、地址或端口填错。
+
+**为什么没有二维码？** 本软件不做 QQ 登录，登录在你自己的协议端里完成。
+
+**支持群聊吗？** 支持。群里需要 @ 机器人才会触发回复。
+
+**能同时连多个机器人吗？** 当前一次只能连一个，切换或改设置前先停止。
+
+**数据存在哪？** `%LOCALAPPDATA%\TaoTaoBot`，含加密密钥、聊天记录与设置，**不要分享或提交**。
+
+**怎么自己打包？** 见上文「打包」，`src/Locomotive.spec` 是全相对路径的。
+
 ## 路线图
 
 - [x] 核对各上游许可证原文（2026-11-10，结论见 [LICENSE.md](LICENSE.md)）
 - [x] 公开应用源码，仓库历史重置为 v4.0.0 单一初始提交
-- [x] 补齐 NapCat 许可全文、LGPL 依赖源码说明，修正第三方声明措辞
-- [x] **协议层解耦**：移除 NapCat 的自动下载 / 配置 / 启动，改为通用 OneBot 11 客户端，用户自备兼容协议端并填写 WebSocket 地址与 Token
+- [x] 补齐第三方许可声明与 LGPL 依赖源码说明，修正第三方声明措辞
+- [x] **协议层解耦**：移除内置协议端的自动下载 / 配置 / 启动，改为通用 OneBot 11 客户端，用户自备兼容协议端并填写 WebSocket 地址与 Token
 - [ ] 裁剪 `bot/` 中的历史遗留模块
 - [ ] 全新环境端到端验证，补 WebView2 缺失提示
 - [ ] 打包并发布第一个可用二进制版本，重新生成校验值
@@ -131,4 +145,4 @@ python -m unittest discover -p "test_*.py" -q
 
 完整结论、上游组件清单与非商业定位见 [LICENSE.md](LICENSE.md)。
 
-上游项目：[NapCatQQ](https://github.com/NapNeko/NapCatQQ) · [ComfyUI](https://github.com/Comfy-Org/ComfyUI) · [VoiceStudio](https://github.com/debpalash/VoiceStudio)
+本项目使用的第三方组件：[ComfyUI](https://github.com/Comfy-Org/ComfyUI) · [VoiceStudio](https://github.com/debpalash/VoiceStudio)

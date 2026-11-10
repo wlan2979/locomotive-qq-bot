@@ -46,7 +46,7 @@ IMAGE_SUFFIXES = (".gif", ".png", ".jpg", ".jpeg", ".webp", ".bmp")
 # 单张上限。
 #
 # 2026-10-04 从 3MB 提到 8MB。原来那个值定得没道理 —— 发表情包走的是
-# **本地** OneBot 通道（读文件 → base64 → 发给同机的 NapCat），
+# **本地** OneBot 通道（读文件 → base64 → 发给同机的 协议端），
 # 既不进模型 token、也不出网，唯一成本是 base64 膨胀 33% 加一次本地传输。
 # 实测用户第一张被挡下的图是 3.2MB 的一张动态表情包，那个尺寸在 QQ
 # 表情包里很常见，挡掉纯属自找麻烦。
@@ -337,7 +337,7 @@ def build_face_segment(mood: Mood) -> Dict[str, Any]:
 def build_sticker_segment(path: Path) -> Optional[Dict[str, Any]]:
     """本地表情包 → image 段。
 
-    走 base64 而不是 `file://`：和生图那条路保持一致，少一个「NapCat
+    走 base64 而不是 `file://`：和生图那条路保持一致，少一个「协议端
     读不到这个路径」的失败模式（路径里的空格、中文都踩过）。
 
     **不转码、不压尺寸** —— GIF 动图是表情包的灵魂，重编码就成静帧了。

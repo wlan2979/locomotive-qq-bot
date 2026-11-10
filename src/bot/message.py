@@ -4,7 +4,7 @@ OneBot 11 有两种消息表示：
 - 字符串形式（CQ 码）："你好[CQ:at,qq=123]"
 - 数组形式：[{"type":"text","data":{"text":"你好"}}, {"type":"at","data":{"qq":"123"}}]
 
-NapCat 默认给数组形式。这里统一成数组，字符串形式做兜底解析。
+协议端 默认给数组形式。这里统一成数组，字符串形式做兜底解析。
 """
 
 from __future__ import annotations
@@ -295,7 +295,7 @@ def build_image_message(
     """构造一条图片消息。
 
     图片用 `base64://` 内联，不走外部图床 —— 少一个会过期的中间环节，
-    也就少一种「发出去是坏图」的可能。NapCat 两种写法都吃。
+    也就少一种「发出去是坏图」的可能。协议端 两种写法都吃。
     """
     segments: List[Dict[str, Any]] = []
     if reply_id is not None:

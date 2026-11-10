@@ -33,7 +33,7 @@ SINGLE_INSTANCE_PORT = 47201
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="QQ AI Bot —— NapCat(OneBot 11) + DeepSeek")
+    parser = argparse.ArgumentParser(description="QQ AI Bot —— OneBot 11 + DeepSeek")
     parser.add_argument(
         "-c",
         "--config",
@@ -281,7 +281,7 @@ def _acquire_single_instance(lock_dir: Path):
     ## 为什么必须有（2026-10-21 踩到）
 
     早上排查「她不回我了」，发现有**两组机器人进程同时在跑**，
-    都连着同一个 NapCat 账号。后果：
+    都连着同一个 协议端 账号。后果：
 
       · 同一条消息被两个进程各处理一遍 → 可能回两次，也可能互相抢走
       · 两个客户端同时发图 → QQ 侧报 `rich media transfer failed`

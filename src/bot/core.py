@@ -1577,7 +1577,7 @@ class BotCore:
                 last_uid = self._last_reply_user.get(int(group_id))
             except (TypeError, ValueError):
                 last_uid = None
-            # 按字符串比 —— NapCat 的 user_id 在不同事件里可能是 int 或 str，
+            # 按字符串比 —— 协议端 的 user_id 在不同事件里可能是 int 或 str，
             # 直接比会永远判成「换了人」，冷却形同虚设。
             same_sender = (
                 last_uid is not None
@@ -2187,7 +2187,7 @@ class BotCore:
     async def _image_to_data_uri(self, data: Dict[str, Any], max_bytes: int) -> Optional[str]:
         url = str(data.get("url") or "").strip()
         file = str(data.get("file") or "").strip()
-        # NapCat 在图片段里会额外塞一个 `path` —— QQ 客户端本地缓存文件的绝对路径。
+        # 协议端 在图片段里会额外塞一个 `path` —— QQ 客户端本地缓存文件的绝对路径。
         # 以前没取这个字段，等于把「最稳的那条路」丢在桌上不用。
         local = str(data.get("path") or "").strip()
 
@@ -2196,7 +2196,7 @@ class BotCore:
         # 0) 已经是 data URI —— 解出来，跟别的入口走同一条校验路径。
         #
         # 以前这里直接 `return url or file` 原样透传。看着省事，其实是个漏洞：
-        # NapCat 给的内联图如果本身是残图（头部完好、内容截断），
+        # 协议端 给的内联图如果本身是残图（头部完好、内容截断），
         # 就会绕过全部检查直接发给模型，换来一个 unsupported image。
         # 所有入口都必须过 prepare()，没有例外。
         for candidate in (url, file):
@@ -2235,7 +2235,7 @@ class BotCore:
         #    兜底接住、真丢 0 次。**「看着报错其实没事」的日志比真故障更
         #    浪费时间**，排查时它会把注意力全引到错的方向。
         #
-        # ⚠️ **实测更正（同日）**：NapCat 的图片段里 **没有 `path` 字段**，
+        # ⚠️ **实测更正（同日）**：协议端 的图片段里 **没有 `path` 字段**，
         # `file` 只是纯文件名（`81748A92....jpg`）。所以这一步在本机
         # 基本不会命中 —— 真正的主力是下面第 3 步的 `get_image`。
         # 留着它是因为成本几乎为零（三次 `is_file()`），而且万一协议端
@@ -2259,7 +2259,7 @@ class BotCore:
                 except OSError:
                     continue
 
-        # 3) NapCat 本地取图 —— **这才是本机的主路径**（2026-10-27 实测）
+        # 3) 协议端 本地取图 —— **这才是本机的主路径**（2026-10-27 实测）
         #
         # `get_image` 返回的 `file` 字段是**本地缓存的绝对路径**
         # （`...\nt_qq\nt_data\Pic\2026-10\Ori\81748a92....jpg`），
@@ -2286,7 +2286,7 @@ class BotCore:
                     except Exception:  # noqa: BLE001
                         raw = None
                 elif inner.startswith(("http://", "https://")):
-                    # NapCat 说本地没有，只能给远程链接 —— 交给下一步的 HTTP。
+                    # 协议端 说本地没有，只能给远程链接 —— 交给下一步的 HTTP。
                     log.debug("get_image 只给了远程链接，交给 HTTP 下载")
                 elif inner:
                     try:
@@ -2298,7 +2298,7 @@ class BotCore:
 
         # 4) 最后兜底：直接抓 CDN 链接
         #
-        # 只有「本地没有 + NapCat 也拿不到」才会走到这里。本机这条路成功率
+        # 只有「本地没有 + 协议端 也拿不到」才会走到这里。本机这条路成功率
         # 很低（见 `_download` 的 docstring），但必须留着 —— 万一 QQ 换了
         # 图床、或者缓存被清掉，它至少还有一次机会。
         if raw is None:
@@ -2340,8 +2340,8 @@ class BotCore:
 
         2026-10-27 补记：**这条路在本机基本已经废了** —— 实测 22 次调用
         22 次截断，两次 attempt 分别只收到 16384 / 32768 字节。真正管用的是
-        NapCat 的 `get_image`（它返回本地缓存的绝对路径，7~65 ms 搞定）。
-        所以 `_image_to_data_uri` 已经把它排到最后，只在「本地没有、NapCat
+        协议端 的 `get_image`（它返回本地缓存的绝对路径，7~65 ms 搞定）。
+        所以 `_image_to_data_uri` 已经把它排到最后，只在「本地没有、协议端
         也拿不到」时才走。别再把它当主路径优化。
         """
         for attempt in (1, 2):
@@ -3475,7 +3475,7 @@ class BotCore:
         刻意**不引用**对方消息 —— 语音条底下挂一条被引用的文字很怪。
 
         发送方式**依次试**（见 `tts.send_modes`）：`file://` URI / 裸路径 /
-        base64，三种写法在不同 NapCat 版本上各有翻车记录，赌一条不如全试。
+        base64，三种写法在不同 协议端 版本上各有翻车记录，赌一条不如全试。
         每次尝试就是一次本机 WS 调用，几毫秒，失败了才走下一个。
         """
         self._check_event(event)
@@ -4788,7 +4788,7 @@ class BotCore:
             latest = self._last_group_msg.get(int(group_id))
         except (TypeError, ValueError):
             return False
-        # 按字符串比。NapCat 不同事件里 message_id 可能是 int 也可能是 str，
+        # 按字符串比。协议端 不同事件里 message_id 可能是 int 也可能是 str，
         # 直接比会永远判成「不是最新的」，变成每条都引用。
         return str(latest) != str(message_id)
 

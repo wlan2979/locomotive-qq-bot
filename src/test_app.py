@@ -102,12 +102,12 @@ class AppTests(unittest.TestCase):
             controller = app.Controller(directory / "profile")
             runtime = directory / "runtime"
             runtime.mkdir()
-            account = directory / "profile/napcat/config/onebot11_10000.json"
+            account = directory / "profile/third-party/config/onebot11_10000.json"
             app.write_json(account, {"network": {}})
             controller.setup()
             self.assertEqual(json.loads(account.read_text("utf-8")), {"network": {}})
-            self.assertFalse((directory / "profile/napcat/config/webui.json").exists())
-            self.assertFalse((runtime / "napcat/config/webui.json").exists())
+            self.assertFalse((directory / "profile/third-party/config/webui.json").exists())
+            self.assertFalse((runtime / "third-party/config/webui.json").exists())
             config = json.loads((directory / "profile/config.json").read_text("utf-8"))
             self.assertEqual(config["deepseek"]["api_key"], "")
             self.assertEqual(config["onebot"]["ws_url"], "ws://127.0.0.1:3001")

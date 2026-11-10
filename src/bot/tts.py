@@ -15,11 +15,11 @@
 * **每轮限一次**：和表情包同理，语音比表情更重（要等合成），
   一轮发两条必然显得吵。
 
-## NapCat 那边怎么收
+## 协议端 那边怎么收
 
-OneBot 11 的 `record` 段，NapCat 收到后自己用 ffmpeg 转成 silk 再发。
+OneBot 11 的 `record` 段，协议端 收到后自己用 ffmpeg 转成 silk 再发。
 `file` 支持**本地绝对路径**、`file://` URI、`base64://` 三种写法 ——
-但**哪个能用取决于 NapCat 版本**，没有一份权威说法。
+但**哪个能用取决于 协议端 版本**，没有一份权威说法。
 
 所以这里不赌：`_send_voice` 会**依次试**（配置的那个优先，最后兜底 base64），
 任一条成功就停。每次尝试都是一次本机 WS 调用，几毫秒，成本可以忽略。
@@ -311,11 +311,11 @@ def pad_wav_tail(data: bytes, pad_ms: int) -> bytes:
 def build_voice_segment(path: Path, mode: str = "uri") -> Dict[str, Any]:
     """构造 OneBot 的 `record` 段。
 
-    `mode` 三选一（NapCat 各版本吃的写法不一样，所以三种都留着）：
+    `mode` 三选一（协议端 各版本吃的写法不一样，所以三种都留着）：
 
     * `uri`    —— `file:///C:/...`，OneBot 生态最标准的写法（**默认**）
-    * `path`   —— `C:\\...`，裸绝对路径。NapCat 也吃，而且日志里最好读
-    * `base64` —— 内联，不依赖 NapCat 读盘权限
+    * `path`   —— `C:\\...`，裸绝对路径。协议端 也吃，而且日志里最好读
+    * `base64` —— 内联，不依赖 协议端 读盘权限
 
     `file` 是 `uri` 的别名，留给配置文件里的旧值。
     """
@@ -332,7 +332,7 @@ def send_modes(preferred: str) -> List[str]:
     """按优先级排出要依次尝试的发送方式。
 
     顺序是**配置的优先，base64 永远兜底**。base64 放最后不是因为它最差，
-    而是因为它不依赖 NapCat 读盘 —— 前面两条都失败时，它是唯一还成立的假设。
+    而是因为它不依赖 协议端 读盘 —— 前面两条都失败时，它是唯一还成立的假设。
     """
     want = (preferred or "uri").strip().lower()
     if want == "file":

@@ -1,7 +1,7 @@
 """OneBot 11 正向 WebSocket 客户端。
 
 设计要点：
-- 断线自动重连，指数退避，不会因为 NapCat 重启就把进程搞死。
+- 断线自动重连，指数退避，不会因为 协议端 重启就把进程搞死。
 - 调用 API 用 echo 字段配对请求/响应，每个调用有独立超时。
 - 事件回调包在 try/except 里，单条消息处理失败不影响连接。
 """
@@ -57,8 +57,8 @@ class OneBotClient:
             16:40:15  起，每 60 秒一条 `Cannot connect to host 127.0.0.1:3001`
                       —— 一直刷到 17:58 用户重启机器人还在刷
 
-        **NapCat 是注入进 QQ 进程的**，QQ 一重启，注入的 hook 就没了，
-        3001 端口整个消失。这时候必须重新跑 `NapCat/launcher.bat`
+        **协议端 是注入进 QQ 进程的**，QQ 一重启，注入的 hook 就没了，
+        3001 端口整个消失。这时候必须重新跑 `协议端的启动脚本`
         （要管理员权限），光重启机器人没用。
 
         但原来的日志全是 INFO 级别，夹在几百行里根本看不见，
@@ -81,7 +81,7 @@ class OneBotClient:
             except Exception as exc:  # noqa: BLE001 —— 任何异常都不该终止循环
                 fails += 1
                 if fails >= 5:
-                    # 连不上不是「网络抖动」了，是 NapCat 没了 —— 说清楚怎么办
+                    # 连不上不是「网络抖动」了，是 协议端 没了 —— 说清楚怎么办
                     if fails == 5 or fails % 30 == 0:
                         log.error(
                             "已经连续 %d 次连不上 OneBot（%s）。"
