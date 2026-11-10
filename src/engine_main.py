@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import ctypes
+import hashlib
 import logging
 import sys
 import time
@@ -28,8 +30,24 @@ from bot.summarize import Summarizer
 
 log = logging.getLogger("main")
 
-# 单实例锁占用的本地端口。随便挑一个高位端口，只要不和系统里别的服务撞。
-SINGLE_INSTANCE_PORT = 47201
+# 引擎单实例锁：命名互斥量，锁名由数据目录路径派生，不同目录可以并行。
+_kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+_kernel32.CreateMutexW.restype = ctypes.c_void_p
+_kernel32.CreateMutexW.argtypes = (ctypes.c_void_p, ctypes.c_bool, ctypes.c_wchar_p)
+_kernel32.CloseHandle.argtypes = (ctypes.c_void_p,)
+ERROR_ALREADY_EXISTS = 183
+
+
+class _InstanceLock:
+    """互斥量句柄。close() 主动释放；进程退出时系统也会回收。"""
+
+    def __init__(self, handle) -> None:
+        self._handle = handle
+
+    def close(self) -> None:
+        if self._handle:
+            _kernel32.CloseHandle(self._handle)
+            self._handle = None
 
 
 def parse_args() -> argparse.Namespace:
@@ -251,48 +269,36 @@ def _install_exit_logging() -> None:
 
 
 def _acquire_single_instance(lock_dir: Path):
-    """单实例锁：同一个账号只允许一个机器人进程。
+    """引擎单实例锁：同一个数据目录只允许一个引擎进程。
 
     ## 为什么必须有（2026-10-21 踩到）
 
-    早上排查「她不回我了」，发现有**两组机器人进程同时在跑**，
-    都连着同一个 协议端 账号。后果：
+    早上排查「她不回我了」，发现有**两组机器人进程同时在跑**，都连着同一个
+    协议端账号。后果：同一条消息被处理两遍、两个客户端同时发图触发
+    `rich media transfer failed`（`result: 1006514`），看起来像网络故障，
+    实际是自己打自己。
 
-      · 同一条消息被两个进程各处理一遍 → 可能回两次，也可能互相抢走
-      · 两个客户端同时发图 → QQ 侧报 `rich media transfer failed`
-        / `网络连接异常`（`result: 1006514`）—— 看起来像网络故障，
-        实际是自己打自己
+    ## 为什么锁名要按数据目录派生
 
-    这个坑很容易踩：`run.bat` 双击一次开一个窗口，用户不确定有没有开着
-    就再点一次；或者上次的窗口最小化在任务栏里看不见。
+    锁的作用域必须是「一个数据目录」而不是「整台机器」。用全局常量当锁，
+    换个 `--data-dir` 想开第二个机器人时会被判成「已有实例」，多开就成了空话。
 
-    ## 为什么用端口而不是文件锁
+    ## 为什么用命名互斥量而不是端口
 
-    先试过 `msvcrt.locking` 锁文件，实测第二个进程在 `open()` 阶段就抛
-    `PermissionError`，异常从 `except OSError` 旁边溜出去，还打了一屏 traceback。
+    端口是整机资源：固定端口会跟别的程序撞，派生端口有碰撞概率，而且
+    「占不到端口」和「端口被别的程序用了」无法区分。命名互斥量按名字区分、
+    进程退出由系统回收，不会留残留文件。
 
-    端口绑定简单得多：占一个本地端口，占不到就说明有人在跑。
-    进程死了系统立刻回收端口，不会有残留锁文件。跨平台也一致。
-
-    返回 socket（必须持有引用，否则被 GC 就释放了）；占不到返回 None。
+    返回可 close() 的句柄；已被占用返回 None。
     """
-    import socket
-
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    try:
-        # Windows 上不设 SO_REUSEADDR，否则两个进程都能绑同一个端口
-        sock.bind(("127.0.0.1", SINGLE_INSTANCE_PORT))
-        sock.listen(1)
-        return sock
-    except OSError:
-        sock.close()
+    key = hashlib.sha256(str(Path(lock_dir).resolve()).encode("utf-8")).hexdigest()[:16]
+    handle = _kernel32.CreateMutexW(None, False, f"Local\\Locomotive.Engine.{key}")
+    if not handle:
         return None
-    except Exception:  # noqa: BLE001
-        try:
-            sock.close()
-        except Exception:  # noqa: BLE001
-            pass
+    if ctypes.get_last_error() == ERROR_ALREADY_EXISTS:
+        _kernel32.CloseHandle(handle)
         return None
+    return _InstanceLock(handle)
 
 
 def main() -> int:

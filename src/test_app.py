@@ -125,6 +125,19 @@ class AppTests(unittest.TestCase):
             controller.clear_memory("group:1")
             self.assertEqual(controller.memory_snapshot()["sessions"], [])
 
+    def test_engine_lock_is_per_data_dir(self):
+        import engine_main
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp)
+            first = engine_main._acquire_single_instance(base / "a")
+            second = engine_main._acquire_single_instance(base / "b")
+            self.assertIsNotNone(first, "不同数据目录应能各自持锁")
+            self.assertIsNotNone(second, "不同数据目录应能各自持锁")
+            again = engine_main._acquire_single_instance(base / "a")
+            self.assertIsNone(again, "同一数据目录应互斥")
+            first.close()
+            second.close()
+
     def test_supervise_returns_immediately_when_stop_marker_exists(self):
         with tempfile.TemporaryDirectory() as temp:
             directory = Path(temp)

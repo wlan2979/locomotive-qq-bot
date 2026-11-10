@@ -24,7 +24,7 @@ from resources import Resources
 
 
 ROOT = Path(__file__).resolve().parent
-VERSION = "4.2.0"
+VERSION = "4.2.1"
 DEFAULT_MODEL = {"provider": "DeepSeek", "base_url": "https://api.deepseek.com", "model": "deepseek-flash"}
 DEFAULT_PLUGINS = {"comfyui": {"enabled": False, "url": "http://127.0.0.1:8188", "checkpoint": ""},
                    "voicestudio": {"enabled": False, "url": "http://127.0.0.1:3900", "voice": "", "model": ""}}
@@ -44,9 +44,15 @@ def default_data_dir() -> Path:
     current = base / DATA_DIR_NAME
     legacy = base / LEGACY_DATA_DIR_NAME
     if not current.exists() and legacy.exists():
+        # 先复制到临时目录再改名：中途失败不会留下「半套数据」的 current，
+        # 否则下次启动会以为迁移已完成，直接用一个不完整的目录。
+        staging = base / (DATA_DIR_NAME + ".migrating")
+        shutil.rmtree(staging, ignore_errors=True)
         try:
-            shutil.copytree(legacy, current)
+            shutil.copytree(legacy, staging)
+            staging.replace(current)
         except OSError:
+            shutil.rmtree(staging, ignore_errors=True)
             return legacy
     return current
 
@@ -683,7 +689,12 @@ def run_engine(directory):
     import bot.tts
 
     directory.mkdir(parents=True, exist_ok=True)
-    output = (directory / "bot-process.log").open("w", encoding="utf-8", buffering=1)
+    log_path = directory / "bot-process.log"
+    if log_path.is_file() and log_path.stat().st_size > 5_000_000:
+        log_path.replace(log_path.with_suffix(".log.1"))
+    # 追加而不是截断：--supervise 会在崩溃后立刻重启，截断模式会把上一次的
+    # 崩溃现场清掉，看门狗越勤快越看不到崩在哪。
+    output = log_path.open("a", encoding="utf-8", buffering=1)
     sys.stdout = sys.stderr = output
     bot.sticker.STICKER_ROOT = directory / "assets/stickers"
     bot.sticker_gen.STICKER_ROOT = directory / "assets/stickers"
@@ -701,6 +712,8 @@ def run_engine(directory):
     bot.tts._COMFYUI_FREE_URL = cfg.imagegen.comfyui_url.rstrip("/") + "/free"
     lock = engine_main._acquire_single_instance(cfg.data_dir)
     if lock is None:
+        # 这行必须在 return 之前：界面提示用户「请查看日志」，不写就等于指向空文件。
+        print(f"数据目录 {cfg.data_dir} 已有引擎在运行，本次启动取消。", flush=True)
         return 3
 
     async def run():
