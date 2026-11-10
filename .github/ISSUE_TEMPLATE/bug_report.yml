@@ -1,0 +1,98 @@
+name: "问题反馈 / Bug Report"
+description: "报告从源码运行、打包或使用 Locomotive 时的异常"
+title: "[Bug] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **提交前请先脱敏。** 不要粘贴 API Key、QQ 号、登录令牌、二维码截图、`window.json` 内容、聊天正文，或 `%LOCALAPPDATA%\TaoTaoBot` 目录中的任何文件。
+
+        发现安全漏洞（密钥泄露、越权访问、账号风险）**不要开公开 Issue**，请走 [私有漏洞报告](https://github.com/wlan2979/locomotive-qq-bot/security/advisories/new)。
+
+        当前版本只有源码，没有 Release 或安装包。运行方式见 [README「从源码运行」](https://github.com/wlan2979/locomotive-qq-bot#从源码运行)。
+
+  - type: input
+    id: version
+    attributes:
+      label: 版本 / 提交
+      description: "src/app.py 里的 VERSION，或出问题的 commit 短哈希"
+      placeholder: "v4.0.0"
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: 运行环境
+      placeholder: "Windows 11 23H2 / Python 3.13.x / WebView2 已装"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: source
+    attributes:
+      label: 运行方式
+      options:
+        - 从源码直接运行（python app.py）
+        - 自行 PyInstaller 打包后运行
+        - 干净电脑（无开发环境、未装插件、无登录缓存）
+        - 不确定
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: 问题环节
+      options:
+        - 依赖安装 / requirements.txt
+        - 从源码启动 / 桌面窗口 / WebView2
+        - PyInstaller 打包
+        - 模型设置 / 测试连接
+        - 连接 QQ / 扫码 / 组件下载
+        - 收发消息 / 回复内容
+        - 插件（ComfyUI / VoiceStudio）
+        - 退出 / 数据保存
+        - 单元测试
+        - 文档 / 说明不清
+        - 其他
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 1. 做了什么 2. 点了什么 3. 发生了什么。越具体越好
+      placeholder: |
+        1. pip install -r requirements.txt
+        2. cd src && python app.py
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望行为与实际行为
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 报错信息 / 日志（已脱敏）
+      description: 没有就写「无」。日志请先删掉密钥、QQ 号、令牌和会话 URL
+      render: shell
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 我已检查过内容不包含 API Key、QQ 账号、登录令牌、`window.json` 内容或聊天记录
+          required: true
+        - label: 我已搜索过现有 Issue，没有重复
+          required: true

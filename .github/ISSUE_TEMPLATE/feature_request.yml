@@ -1,0 +1,62 @@
+name: "功能建议 / 许可线索"
+description: "提出功能想法，或提供代码来源与第三方许可的线索"
+title: "[Suggestion] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        v4.0.0 起应用源码已公开，欢迎提建议或直接提 PR。当前**协议层解耦尚未完成**，实现排期见 [README 路线图](https://github.com/wlan2979/locomotive-qq-bot#路线图)。
+
+        本项目为**非商业项目**，请勿提交引流、广告或内置下载引导类需求。
+
+        安全漏洞请勿在此提交，走 [私有漏洞报告](https://github.com/wlan2979/locomotive-qq-bot/security/advisories/new)。
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: 类型
+      options:
+        - 功能建议
+        - 代码改进 / 重构
+        - 文档 / 说明改进
+        - 打包与依赖
+        - 代码来源线索
+        - 第三方组件许可线索
+        - 其他
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 想解决什么问题
+      description: 先说场景和痛点，再说你想要的方案
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 建议的方案或线索
+      description: 提供许可线索时，请给上游仓库链接与许可证文件位置；不要粘贴来源不明的代码
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 考虑过的其他做法 / 补充说明
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: 确认
+      options:
+        - label: 内容不含任何密钥、账号、令牌或聊天记录
+          required: true
+        - label: 我没有粘贴来源或许可不明的第三方代码
+          required: true
+        - label: 建议不含商业推广、引流或协议端下载引导
+          required: true

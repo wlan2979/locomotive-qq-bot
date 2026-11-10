@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: "安全漏洞 · 请勿公开提交"
+    url: https://github.com/wlan2979/locomotive-qq-bot/security/advisories/new
+    about: 涉及密钥、登录态、越权访问或可利用漏洞时，请走私有报告渠道，不要开公开 Issue。

@@ -1,0 +1,938 @@
+"""Local onboarding UI and isolated runtime for the existing QQ bot."""
+from __future__ import annotations
+
+import argparse
+import asyncio
+import base64
+import ctypes
+import hashlib
+import io
+import json
+import os
+from pathlib import Path
+import secrets
+import shutil
+import socket
+import subprocess
+import sys
+import threading
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+import zipfile
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from resources import Resources
+
+import qrcode
+
+ROOT = Path(__file__).resolve().parent
+VERSION = "4.0.0"
+DEFAULT_MODEL = {"provider": "DeepSeek", "base_url": "https://api.deepseek.com", "model": "deepseek-flash"}
+DEFAULT_PLUGINS = {"comfyui": {"enabled": False, "url": "http://127.0.0.1:8188", "checkpoint": ""},
+                   "voicestudio": {"enabled": False, "url": "http://127.0.0.1:3900", "voice": "", "model": ""}}
+NAPCAT_VERSION = "v4.18.42"
+RUNTIME_URL = f"https://github.com/NapNeko/NapCatQQ/releases/download/{NAPCAT_VERSION}/NapCat.Shell.Windows.Node.zip"
+RUNTIME_HASH = "77397ac38d66f46383e48f08f35d5f9d37ec575c22069f62d6c600e73b4521ed"
+NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+
+def write_json(path: Path, value):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
+    temporary.replace(path)
+
+
+def endpoint(value, local_only=False):
+    if not isinstance(value, str) or len(value) > 2048:
+        raise ValueError("接口地址无效。")
+    parsed = urllib.parse.urlsplit(value.strip())
+    local = parsed.hostname in ("localhost", "127.0.0.1", "::1")
+    if not parsed.hostname or parsed.scheme not in ("http", "https") or parsed.username is not None or parsed.password is not None or parsed.query or parsed.fragment:
+        raise ValueError("请填写完整的 HTTP/HTTPS 接口地址，不要在地址里填写密钥。")
+    if parsed.scheme == "http" and not local or local_only and (not local or parsed.path.strip("/")):
+        raise ValueError("资源接口请使用本机地址；远程模型接口请使用 HTTPS。")
+    parsed.port
+    return value.strip().rstrip("/")
+
+
+def validate_model_key(model, key):
+    class SameOrigin(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, request, fp, code, message, headers, new_url):
+            before, after = urllib.parse.urlsplit(request.full_url), urllib.parse.urlsplit(new_url)
+            if (before.scheme, before.hostname, before.port) != (after.scheme, after.hostname, after.port):
+                raise ValueError("模型接口跳转到了其他地址，请填写供应商提供的最终接口地址。")
+            return super().redirect_request(request, fp, code, message, headers, new_url)
+
+    request = urllib.request.Request(endpoint(model["base_url"]) + "/models", headers={"Authorization": "Bearer " + key})
+    try:
+        with urllib.request.build_opener(SameOrigin()).open(request, timeout=20) as response:
+            result = json.loads(response.read(1_000_000))
+        if not isinstance(result, (dict, list)):
+            raise ValueError("模型接口返回了无法识别的内容。")
+        return "模型接口连接正常。"
+    except urllib.error.HTTPError as error:
+        if error.code in (401, 403):
+            raise ValueError("API Key 验证失败，请检查供应商、地址和密钥。") from None
+        if error.code in (404, 405):
+            return "接口未提供模型列表，设置已保存；模型可用性将在聊天时验证。"
+        raise ValueError("模型接口暂时无法连接，请稍后重试。") from None
+
+
+def protect(data: bytes, decrypt=False) -> bytes:
+    from ctypes import wintypes
+
+    class Blob(ctypes.Structure):
+        _fields_ = [("size", wintypes.DWORD), ("data", ctypes.POINTER(ctypes.c_ubyte))]
+
+    buffer = ctypes.create_string_buffer(data)
+    incoming = Blob(len(data), ctypes.cast(buffer, ctypes.POINTER(ctypes.c_ubyte)))
+    outgoing = Blob()
+    function = ctypes.windll.crypt32.CryptUnprotectData if decrypt else ctypes.windll.crypt32.CryptProtectData
+    if not function(ctypes.byref(incoming), None, None, None, None, 1, ctypes.byref(outgoing)):
+        raise OSError("Windows 无法读取或保护保存的密钥，请重新输入 API Key。")
+    try:
+        return ctypes.string_at(outgoing.data, outgoing.size)
+    finally:
+        ctypes.windll.kernel32.LocalFree(outgoing.data)
+
+
+def available_port():
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        return listener.getsockname()[1]
+
+
+def open_window(url: str, directory: Path):
+    parsed = urllib.parse.urlsplit(url)
+    if parsed.scheme != "http" or parsed.hostname != "127.0.0.1" or not parsed.port or parsed.path != "/" or parsed.username or parsed.query:
+        raise ValueError("程序窗口地址无效，请重新启动。")
+    import webview
+    webview.settings["OPEN_EXTERNAL_LINKS_IN_BROWSER"] = False
+    return webview.create_window("Locomotive", url, width=1100, height=850, min_size=(800, 650),
+                                 background_color="#f5f6f8", text_select=True)
+
+
+def reopen_window(window: Path, directory: Path):
+    if not window.is_file():
+        raise RuntimeError("程序启动端口已被占用，但没有找到登录窗口。请退出旧程序后重试。")
+    previous = json.loads(window.read_text("utf-8")).get("url", "")
+    parsed = urllib.parse.urlsplit(previous)
+    if parsed.scheme != "http" or parsed.hostname != "127.0.0.1" or not parsed.port or parsed.path != "/" or parsed.username or parsed.query or not parsed.fragment:
+        raise ValueError("已保存的窗口地址无效，请退出旧程序后重试。")
+    base = urllib.parse.urlunsplit(parsed._replace(fragment=""))
+    request = urllib.request.Request(base + "activate", data=b"{}", headers={"X-Session": parsed.fragment, "Content-Type": "application/json"})
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        with opener.open(request, timeout=3) as response:
+            state = json.loads(response.read(2_000_000))
+        if not isinstance(state, dict) or not state.get("ok"):
+            raise ValueError()
+    except (OSError, ValueError) as error:
+        raise RuntimeError("旧窗口已无法连接，请退出旧程序后重新打开。") from error
+
+
+def show_startup_error(error):
+    directory = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "TaoTaoBot"
+    detail = str(error) or type(error).__name__
+    message = "Locomotive 未能启动。\n\n" + detail[:600]
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+        with (directory / "startup.log").open("a", encoding="utf-8") as output:
+            output.write(time.strftime("%Y-%m-%d %H:%M:%S ") + type(error).__name__ + ": " + detail + "\n")
+    except OSError:
+        pass
+    ctypes.windll.user32.MessageBoxW(None, message, "Locomotive", 0x10 | 0x10000 | 0x40000)
+
+
+def unpack_checked(archive: Path, destination: Path):
+    destination = destination.resolve()
+    with zipfile.ZipFile(archive) as bundle:
+        total = 0
+        for item in bundle.infolist():
+            target = (destination / item.filename).resolve()
+            if not target.is_relative_to(destination) or (item.external_attr >> 16) & 0o170000 == 0o120000:
+                raise ValueError("运行组件的压缩包路径不安全，已取消解压。")
+            total += item.file_size
+            if total > 2_000_000_000:
+                raise ValueError("运行组件大小异常，已取消解压。")
+        bundle.extractall(destination)
+
+
+def make_config(ws_port: int, token: str, model=None, plugins=None, name="桃桃"):
+    result = {
+        "onebot": {"ws_url": f"ws://127.0.0.1:{ws_port}", "access_token": token},
+        "deepseek": {"api_key": "", "base_url": "https://api.deepseek.com", "model": "deepseek-flash", "thinking": False},
+        "bot": {"system_prompt": "@persona.txt", "private_enabled": True, "group_trigger": "at", "group_activate_minutes": 0,
+                "owner_ids": [], "enable_search": False, "history_persist": True, "summary_enabled": False},
+        "imagegen": {"enable": False, "comfyui_enable": False},
+        "sticker_gen": {"enable": False, "generate": False, "prewarm": False},
+        "phone": {"enable": False},
+        "hands": {"enable": False, "douyin_browse": False, "comment_enable": False, "launch_emulator": False},
+        "douyin": {"enable": False}, "seedance": {"enable": False}, "tts": {"enabled": False},
+        "log": {"level": "INFO", "dir": "logs"},
+    }
+    result["deepseek"].update({key: value for key, value in (model or DEFAULT_MODEL).items() if key != "provider"})
+    result["bot"]["self_names"] = [name]
+    plugins = plugins or DEFAULT_PLUGINS
+    drawing, voice = plugins["comfyui"], plugins["voicestudio"]
+    result["imagegen"].update(enable=drawing["enabled"], comfyui_enable=drawing["enabled"], local_only=True,
+                              comfyui_url=drawing["url"], comfyui_checkpoint=drawing.get("checkpoint", ""))
+    result["tts"].update(enabled=voice["enabled"], base_url=voice["url"], voice=voice.get("voice", ""),
+                         model=voice.get("model", ""), language="zh", release_comfyui=drawing["enabled"])
+    return result
+
+
+class Napcat:
+    def __init__(self, port: int, password: str):
+        self.base = f"http://127.0.0.1:{port}/api"
+        self.password = password
+        self.credential = ""
+        self.authenticated_at = 0
+        self.lock = threading.RLock()
+        self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+    def call(self, route, payload=None):
+        with self.lock:
+            if route != "/auth/login" and self.credential and time.monotonic() - self.authenticated_at > 3000:
+                self.login()
+            return self._call(route, payload)
+
+    def _call(self, route, payload):
+        headers = {"Content-Type": "application/json"}
+        if self.credential:
+            headers["Authorization"] = "Bearer " + self.credential
+        request = urllib.request.Request(self.base + route, json.dumps(payload or {}).encode(), headers)
+        with self.opener.open(request, timeout=8) as response:
+            result = json.loads(response.read(2_000_000))
+        if result.get("code") != 0:
+            raise RuntimeError("QQ 登录服务暂未就绪，请稍候或重试。")
+        return result.get("data")
+
+    def login(self):
+        password_hash = hashlib.sha256((self.password + ".napcat").encode()).hexdigest()
+        result = self.call("/auth/login", {"hash": password_hash})
+        self.credential = result["Credential"]
+        self.authenticated_at = time.monotonic()
+
+
+class Controller:
+    def __init__(self, directory: Path):
+        self.root_directory = directory.resolve()
+        self.directory = self.root_directory
+        self.directory.mkdir(parents=True, exist_ok=True)
+        self.settings_path = self.directory / "settings.json"
+        self.settings = json.loads(self.settings_path.read_text("utf-8")) if self.settings_path.exists() else {}
+        self.settings.setdefault("model", dict(DEFAULT_MODEL))
+        self.settings.setdefault("plugins", json.loads(json.dumps(DEFAULT_PLUGINS)))
+        persona_path = self.root_directory / "persona.txt"
+        default_persona = persona_path.read_text("utf-8") if persona_path.exists() else (ROOT / "persona.txt").read_text("utf-8")
+        self.settings.setdefault("bots", [{"id": "taotao", "name": "桃桃", "persona": default_persona}])
+        self.settings.setdefault("selected_bot", "taotao")
+        if not any(bot["id"] == self.settings["selected_bot"] for bot in self.settings["bots"]):
+            self.settings["selected_bot"] = self.settings["bots"][0]["id"] if self.settings["bots"] else None
+        self.directory = self.bot_directory(self.settings["selected_bot"]) if self.settings["selected_bot"] else self.root_directory
+        write_json(self.settings_path, self.settings)
+        self.resources = Resources(self.root_directory)
+        self.cancel = threading.Event()
+        self.lock = threading.RLock()
+        self.cleanup_lock = threading.Lock()
+        self.state = {"stage": "idle", "message": "选择机器人，配置模型后连接 QQ。", "progress": 0, "qrcode": "", "saved_key": bool(self.settings.get("key"))}
+        self.worker = None
+        self.node = None
+        self.engine = None
+        self.api = None
+        self.secret_values = []
+        self.stopping = False
+        self.model_for_run = dict(self.settings["model"])
+        self.window = None
+
+    def bot_directory(self, bot_id):
+        if not isinstance(bot_id, str) or not bot_id or any(c not in "abcdefghijklmnopqrstuvwxyz0123456789_-" for c in bot_id):
+            raise ValueError("机器人标识无效。")
+        return self.root_directory if bot_id == "taotao" else self.root_directory / "bots" / bot_id
+
+    def selected_bot(self):
+        return next((bot for bot in self.settings["bots"] if bot["id"] == self.settings["selected_bot"]), None)
+
+    def require_idle(self):
+        # shortcut: one active QQ bot at a time; give engines separate locks when parallel bots are requested.
+        if self.stopping or self.worker and self.worker.is_alive():
+            raise ValueError("请先停止当前机器人，再修改设置或切换机器人。")
+
+    def save_bot(self, body):
+        name, persona = body.get("name"), body.get("persona")
+        if not isinstance(name, str) or not 1 <= len(name.strip()) <= 40 or not isinstance(persona, str) or len(persona) > 20000:
+            raise ValueError("机器人名称须为 1—40 字，人设最多 20000 字。")
+        with self.lock:
+            self.require_idle()
+            bot_id = body.get("id")
+            if bot_id:
+                bot = next((bot for bot in self.settings["bots"] if bot["id"] == bot_id), None)
+                if bot is None:
+                    raise ValueError("找不到这个机器人。")
+                bot.update(name=name.strip(), persona=persona)
+            else:
+                if len(self.settings["bots"]) >= 50:
+                    raise ValueError("当前最多保存 50 个机器人。")
+                bot_id = secrets.token_hex(8)
+                self.settings["bots"].append({"id": bot_id, "name": name.strip(), "persona": persona})
+            self.settings["selected_bot"] = bot_id
+            self.directory = self.bot_directory(bot_id)
+            write_json(self.settings_path, self.settings)
+            self.update(stage="idle", message="设置已保存，可以连接 QQ。", qrcode="")
+
+    def select_bot(self, bot_id):
+        with self.lock:
+            self.require_idle()
+            if not any(bot["id"] == bot_id for bot in self.settings["bots"]):
+                raise ValueError("找不到这个机器人。")
+            self.settings["selected_bot"] = bot_id
+            self.directory = self.bot_directory(bot_id)
+            write_json(self.settings_path, self.settings)
+            self.update(stage="idle", message="机器人已切换，可以连接 QQ。", qrcode="", progress=0)
+
+    def remove_bot(self, bot_id):
+        with self.lock:
+            self.require_idle()
+            if not any(bot["id"] == bot_id for bot in self.settings["bots"]):
+                raise ValueError("找不到这个机器人。")
+            self.settings["bots"] = [bot for bot in self.settings["bots"] if bot["id"] != bot_id]
+            if self.settings["selected_bot"] == bot_id:
+                self.settings["selected_bot"] = self.settings["bots"][0]["id"] if self.settings["bots"] else None
+            self.directory = self.bot_directory(self.settings["selected_bot"]) if self.settings["selected_bot"] else self.root_directory
+            write_json(self.settings_path, self.settings)
+            self.update(stage="idle", message="机器人已移除，本地聊天记录和登录资料已保留。", qrcode="", progress=0)
+
+    def change_plugin(self, name, removed):
+        if name not in (*DEFAULT_PLUGINS, "napcat"):
+            raise ValueError("未知插件。")
+        with self.lock:
+            self.require_idle()
+            if name == "napcat":
+                self.settings["napcat_removed"] = removed
+            else:
+                if removed:
+                    self.resources.remove(name)
+                    self.settings["plugins"][name]["enabled"] = False
+                else:
+                    self.resources.scan(name)
+                self.settings["plugins"][name]["removed"] = removed
+            write_json(self.settings_path, self.settings)
+
+    def save_model(self, body, test_only=False):
+        with self.lock:
+            self.require_idle()
+            provider, model_id = body.get("provider"), body.get("model")
+            if not isinstance(provider, str) or not 1 <= len(provider.strip()) <= 64 or not isinstance(model_id, str) or not 1 <= len(model_id.strip()) <= 200:
+                raise ValueError("请填写供应商名称和模型名称。")
+            model = {"provider": provider.strip(), "model": model_id.strip(), "base_url": endpoint(body.get("base_url"))}
+            key = body.get("key", "")
+            if not isinstance(key, str):
+                raise ValueError("API Key 格式无效。")
+            key = key.strip()
+            if not key:
+                if model["base_url"] != self.settings["model"]["base_url"] and self.settings.get("key"):
+                    raise ValueError("更换接口地址时，请重新输入对应供应商的 API Key。")
+                if not self.settings.get("key"):
+                    raise ValueError("请填写 API Key。")
+                key = protect(base64.b64decode(self.settings["key"]), decrypt=True).decode()
+            if len(key) > 4096 or any(c.isspace() for c in key):
+                raise ValueError("API Key 格式无效。")
+            message = validate_model_key(model, key)
+            if not test_only:
+                self.settings.update(model=model, key=base64.b64encode(protect(key.encode())).decode())
+                write_json(self.settings_path, self.settings)
+                self.update(saved_key=True)
+            return {"message": message}
+
+    def save_plugins(self, body):
+        values = {}
+        for name, defaults in DEFAULT_PLUGINS.items():
+            supplied = body.get(name, {})
+            if not isinstance(supplied, dict) or not isinstance(supplied.get("enabled"), bool):
+                raise ValueError("插件配置无效。")
+            value = {"enabled": supplied["enabled"], "url": endpoint(supplied.get("url"), local_only=True)}
+            for field in ("checkpoint",) if name == "comfyui" else ("voice", "model"):
+                text = supplied.get(field, "")
+                if not isinstance(text, str) or len(text) > 300:
+                    raise ValueError("插件配置无效。")
+                value[field] = text.strip()
+            values[name] = value
+        with self.lock:
+            self.require_idle()
+            for name, value in values.items():
+                value["removed"] = bool(self.settings["plugins"][name].get("removed"))
+                if value["removed"]:
+                    value["enabled"] = False
+            self.settings["plugins"] = values
+            write_json(self.settings_path, self.settings)
+
+    def update(self, **fields):
+        with self.lock:
+            self.state.update(fields)
+
+    def snapshot(self):
+        with self.lock:
+            return {**self.state, "saved_key": bool(self.settings.get("key")), "model": dict(self.settings["model"]),
+                    "bots": [{"id": bot["id"], "name": bot["name"]} for bot in self.settings["bots"]],
+                    "bot": dict(self.selected_bot()) if self.selected_bot() else None,
+                    "napcat_removed": bool(self.settings.get("napcat_removed")), "plugins": json.loads(json.dumps(self.settings["plugins"])),
+                    "resources": self.resources.snapshot(), "version": VERSION}
+
+    def start(self, api_key: str):
+        with self.lock:
+            if self.stopping or self.worker and self.worker.is_alive():
+                raise ValueError("正在连接，请稍候。")
+            if not self.selected_bot():
+                raise ValueError("请先创建一个机器人。")
+            if self.settings.get("napcat_removed"):
+                raise ValueError("请先在插件页重新添加 NapCat。")
+            api_key = api_key.strip()
+            if not api_key:
+                if not self.settings.get("key"):
+                    raise ValueError("请先在模型页填写 API Key。")
+                api_key = protect(base64.b64decode(self.settings["key"]), decrypt=True).decode()
+            if not api_key or len(api_key) > 4096 or any(c.isspace() for c in api_key):
+                raise ValueError("API Key 格式不正确，请检查后重试。")
+            self.secret_values = [api_key]
+            self.model_for_run = dict(self.settings["model"])
+            self.cancel.clear()
+            self.update(stage="preparing", message="正在检查运行组件…", progress=0, qrcode="")
+            self.worker = threading.Thread(target=self.run, args=(api_key,), daemon=True)
+            self.worker.start()
+
+    def prepare_runtime(self):
+        runtime = self.root_directory / ("runtime-" + NAPCAT_VERSION)
+        required = [runtime / "node.exe", runtime / "index.js", runtime / "wrapper.node", runtime / "napcat/napcat.mjs"]
+        if all(path.is_file() for path in required) and (runtime / ".ready").is_file():
+            return runtime
+        archive = self.root_directory / (NAPCAT_VERSION + ".zip.part")
+        self.update(message="首次使用，正在下载 QQ 运行组件（约 124 MB）…")
+        request = urllib.request.Request(RUNTIME_URL, headers={"User-Agent": "TaoTaoBot/" + VERSION})
+        digest = hashlib.sha256()
+        with urllib.request.urlopen(request, timeout=60) as response, archive.open("wb") as output:
+            total = int(response.headers.get("Content-Length", 124_162_399))
+            received = 0
+            while chunk := response.read(1024 * 1024):
+                if self.cancel.is_set():
+                    raise InterruptedError()
+                output.write(chunk)
+                digest.update(chunk)
+                received += len(chunk)
+                if received > 200_000_000:
+                    raise ValueError("运行组件下载大小异常，已停止。")
+                self.update(progress=min(95, int(received / total * 95)))
+        if digest.hexdigest() != RUNTIME_HASH:
+            archive.unlink(missing_ok=True)
+            raise ValueError("运行组件完整性检查未通过，请重新连接下载。")
+        self.update(message="正在准备扫码登录…", progress=98)
+        unpack_checked(archive, runtime)
+        if not all(path.is_file() for path in required):
+            raise ValueError("运行组件不完整，请重新连接。")
+        (runtime / ".ready").write_text(RUNTIME_HASH, encoding="ascii")
+        archive.unlink(missing_ok=True)
+        return runtime
+
+    def setup(self, runtime):
+        # Only this app's private runtime/configuration is modified.
+        web_port, ws_port = available_port(), available_port()
+        while ws_port == web_port:
+            ws_port = available_port()
+        web_token, ws_token = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
+        self.secret_values.extend([web_token, ws_token])
+        config_dir = self.directory / "napcat/config"
+        web_config_path = config_dir / "webui.json"
+        web_config = json.loads(web_config_path.read_text("utf-8")) if web_config_path.exists() else {}
+        web_config.update(host="127.0.0.1", port=web_port, token=web_token, disableWebUI=False, enable2FA=False)
+        write_json(web_config_path, web_config)
+        onebot = {"network": {"websocketServers": [{"name": "taotao", "enable": True, "host": "127.0.0.1", "port": ws_port,
+                   "messagePostFormat": "array", "reportSelfMessage": False, "token": ws_token, "enableForcePushEvent": True,
+                   "debug": False, "heartInterval": 30000}]}}
+        write_json(config_dir / "onebot11.json", onebot)
+        for account_config in config_dir.glob("onebot11_*.json"):
+            write_json(account_config, onebot)
+        bot = self.selected_bot()
+        write_json(self.directory / "config.json", make_config(ws_port, ws_token, self.model_for_run, self.settings["plugins"], bot["name"]))
+        prompt = f"你当前的名字是『{bot['name']}』，如详细设定里出现旧名字，以当前名字为准。\n\n{bot['persona']}"
+        (self.directory / "persona.txt").write_text(prompt, encoding="utf-8")
+        self.api = Napcat(web_port, web_token)
+        return onebot
+
+    def launch_engine(self, key):
+        arguments = [sys.executable] if getattr(sys, "frozen", False) else [sys.executable, str(Path(__file__).resolve())]
+        environment = os.environ.copy()
+        for name in ("DEEPSEEK_API_KEY", "BOCHA_API_KEY", "IMAGE_API_KEY", "ONEBOT_ACCESS_TOKEN"):
+            environment.pop(name, None)
+        environment["DEEPSEEK_API_KEY"] = key
+        environment["PYTHONUTF8"] = "1"
+        ready_path = self.directory / "engine-ready.json"
+        ready_path.unlink(missing_ok=True)
+        (self.directory / "engine-stop").unlink(missing_ok=True)
+        self.engine = subprocess.Popen(arguments + ["--engine", "--data-dir", str(self.directory)],
+                                       stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                       env=environment, cwd=self.directory, creationflags=NO_WINDOW)
+        for _ in range(100):
+            if self.cancel.wait(0.2):
+                raise InterruptedError()
+            if self.engine.poll() is not None:
+                raise RuntimeError("聊天程序未能启动。请查看日志；原来的机器人如果正在运行，请先关闭后重试。")
+            if ready_path.exists():
+                return
+        raise RuntimeError("QQ 已登录，但聊天程序连接超时，请停止后重试。")
+
+    def launch_qq(self, runtime):
+        environment = os.environ.copy()
+        for name in ("DEEPSEEK_API_KEY", "BOCHA_API_KEY", "IMAGE_API_KEY", "ONEBOT_ACCESS_TOKEN"):
+            environment.pop(name, None)
+        environment["NAPCAT_QQ_DATA_DIR"] = str(self.directory / "qq")
+        environment["NAPCAT_WORKDIR"] = str(self.directory / "napcat")
+        environment["NAPCAT_WEBUI_SECRET_KEY"] = self.api.password
+        with (self.directory / "qq-runtime.log").open("ab") as output:
+            self.node = subprocess.Popen([str(runtime / "node.exe"), str(runtime / "index.js")], cwd=runtime,
+                                         stdout=output, stderr=subprocess.STDOUT, env=environment, creationflags=NO_WINDOW)
+
+    def run(self, key):
+        try:
+            self.update(message="正在验证 API Key…")
+            validate_model_key(self.model_for_run, key)
+            with self.lock:
+                self.settings["key"] = base64.b64encode(protect(key.encode())).decode()
+                write_json(self.settings_path, self.settings)
+            self.update(saved_key=True)
+            for name, plugin in self.settings["plugins"].items():
+                if not plugin["enabled"]:
+                    continue
+                self.resources.install(name, plugin["url"])
+                while self.resources.thread.is_alive():
+                    if self.cancel.wait(0.25):
+                        self.resources.cancel.set()
+                        raise InterruptedError()
+                    job = self.resources.snapshot()["job"]
+                    self.update(message=job["message"], progress=job["progress"])
+                job = self.resources.snapshot()["job"]
+                if job["phase"] != "done":
+                    raise ValueError(job["message"])
+            runtime = self.prepare_runtime()
+            if self.cancel.is_set():
+                raise InterruptedError()
+            onebot = self.setup(runtime)
+            self.launch_qq(runtime)
+            self.update(stage="connecting", message="正在启动 QQ，二维码即将出现…", progress=100)
+            for _ in range(90):
+                if self.cancel.wait(1):
+                    raise InterruptedError()
+                if self.node.poll() is not None:
+                    raise RuntimeError("QQ 运行组件启动失败，请查看运行日志。")
+                try:
+                    self.api.login()
+                    break
+                except (OSError, ValueError, RuntimeError, KeyError):
+                    continue
+            else:
+                raise RuntimeError("QQ 登录服务启动超时，请检查网络后重试。")
+            while not self.cancel.is_set():
+                status = self.api.call("/QQLogin/CheckLoginStatus")
+                if status.get("isLogin"):
+                    break
+                qr = status.get("qrcodeurl", "")
+                if not qr:
+                    try:
+                        qr = self.api.call("/QQLogin/GetQQLoginQrcode").get("qrcode", "")
+                    except RuntimeError:
+                        pass
+                message = "已扫码，请在手机 QQ 上确认登录。" if status.get("qrLoginAccepted") else "用手机 QQ 扫描二维码，并确认登录。"
+                if status.get("loginError"):
+                    message = "QQ 提示需要重新登录，请刷新二维码后重试。"
+                self.update(stage="qr", message=message, qrcode=qr)
+                if self.cancel.wait(2):
+                    raise InterruptedError()
+            if self.cancel.is_set():
+                raise InterruptedError()
+            self.api.call("/OB11Config/SetConfig", {"config": json.dumps(onebot)})
+            self.update(stage="connecting", message="QQ 已登录，正在连接聊天服务…", qrcode="")
+            self.launch_engine(key)
+            online_message = self.selected_bot()["name"] + "已连接。可以私聊，或在群里 @ 机器人。"
+            self.update(stage="online", message=online_message, progress=100, qrcode="")
+            while not self.cancel.wait(3):
+                if self.engine.poll() is not None:
+                    raise RuntimeError("聊天程序已停止，请重新连接。")
+                if self.node.poll() is not None:
+                    raise RuntimeError("QQ 连接已关闭，请重新连接。")
+                try:
+                    status = self.api.call("/QQLogin/CheckLoginStatus")
+                    self.update(stage="online" if status.get("isLogin") else "connecting",
+                                message=online_message if status.get("isLogin") else "QQ 暂时离线，正在等待恢复…")
+                except (OSError, ValueError, RuntimeError):
+                    self.update(stage="connecting", message="QQ 连接暂时中断，正在等待恢复…")
+        except InterruptedError:
+            self.update(stage="idle", message="已停止，可以重新连接。", qrcode="", progress=0)
+        except Exception as error:
+            message = str(error)
+            for value in self.secret_values:
+                message = message.replace(value, "[已隐藏]")
+            if isinstance(error, urllib.error.HTTPError):
+                message = "运行组件下载失败，请检查是否能访问 GitHub，再重新连接。"
+            self.update(stage="error", message=message[:240], qrcode="")
+        finally:
+            self.cleanup()
+
+    def cleanup(self):
+        with self.cleanup_lock:
+            self._cleanup()
+
+    def _cleanup(self):
+        if self.engine and self.engine.poll() is None:
+            try:
+                (self.directory / "engine-stop").touch()
+                self.engine.wait(timeout=12)
+            except (OSError, subprocess.TimeoutExpired):
+                self.engine.terminate()
+                self.engine.wait(timeout=5)
+        if self.node and self.node.poll() is None:
+            self.node.terminate()
+            try:
+                self.node.wait(timeout=8)
+            except subprocess.TimeoutExpired:
+                self.node.kill()
+                self.node.wait(timeout=5)
+
+    def stop(self):
+        with self.lock:
+            if self.stopping:
+                return
+            self.stopping = True
+        try:
+            self.cancel.set()
+            self.update(stage="stopping", message="正在停止并保存聊天记录…", qrcode="")
+            if self.worker and self.worker.is_alive():
+                self.worker.join(timeout=25)
+            self.cleanup()
+            if not self.worker or not self.worker.is_alive():
+                self.update(stage="idle", message="已停止，可以重新连接。", qrcode="", progress=0)
+        finally:
+            with self.lock:
+                self.stopping = False
+
+
+def run_engine(directory):
+    import logging
+    import engine_main
+    import bot.sticker
+    import bot.sticker_gen
+    import bot.tts
+
+    directory.mkdir(parents=True, exist_ok=True)
+    output = (directory / "bot-process.log").open("w", encoding="utf-8", buffering=1)
+    sys.stdout = sys.stderr = output
+    bot.sticker.STICKER_ROOT = directory / "assets/stickers"
+    bot.sticker_gen.STICKER_ROOT = directory / "assets/stickers"
+
+    class Ready(logging.Handler):
+        def emit(self, record):
+            if record.getMessage() == "OneBot 连接就绪":
+                write_json(directory / "engine-ready.json", {"ready": True})
+
+    logging.getLogger("bot.onebot").addHandler(Ready())
+    config_path = directory / "config.json"
+    cfg = engine_main.Config.load(config_path)
+    bot.tts.PAUSE_FILE = directory / ".speech-paused"
+    bot.tts._COMFYUI_FREE_URL = cfg.imagegen.comfyui_url.rstrip("/") + "/free"
+    lock = engine_main._acquire_single_instance(cfg.data_dir)
+    if lock is None:
+        return 3
+
+    async def run():
+        task = asyncio.create_task(engine_main.amain(argparse.Namespace(config=str(config_path), check=False)))
+
+        async def wait_for_stop():
+            while not (directory / "engine-stop").exists():
+                await asyncio.sleep(0.25)
+            task.cancel()
+
+        stopper = asyncio.create_task(wait_for_stop())
+        try:
+            return await task
+        except asyncio.CancelledError:
+            return 0
+        finally:
+            stopper.cancel()
+            await asyncio.gather(stopper, return_exceptions=True)
+
+    try:
+        return asyncio.run(run())
+    finally:
+        lock.close()
+        output.flush()
+
+
+def serve(controller, open_browser=True):
+    session = secrets.token_urlsafe(32)
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *_):
+            pass
+
+        def send(self, value, code=200, kind="application/json; charset=utf-8"):
+            data = value if isinstance(value, bytes) else json.dumps(value, ensure_ascii=False).encode()
+            self.send_response(code)
+            self.send_header("Content-Type", kind)
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Referrer-Policy", "no-referrer")
+            self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'")
+            self.end_headers()
+            self.wfile.write(data)
+
+        def valid(self):
+            expected = f"127.0.0.1:{self.server.server_port}"
+            origin = self.headers.get("Origin")
+            return self.headers.get("Host") == expected and (not origin or origin == "http://" + expected)
+
+        def do_GET(self):
+            if not self.valid():
+                return self.send({"error": "请求来源无效"}, 403)
+            if self.path == "/":
+                return self.send((ROOT / "index.html").read_bytes(), kind="text/html; charset=utf-8")
+            if not secrets.compare_digest(self.headers.get("X-Session", ""), session):
+                return self.send({"error": "请从程序打开的窗口访问。"}, 403)
+            if self.path == "/state":
+                state = controller.snapshot()
+                qr = state.pop("qrcode", "")
+                if qr:
+                    image = qrcode.make(qr)
+                    stream = io.BytesIO()
+                    image.save(stream, format="PNG")
+                    state["qr_image"] = "data:image/png;base64," + base64.b64encode(stream.getvalue()).decode()
+                return self.send(state)
+            return self.send({"error": "未找到页面"}, 404)
+
+        def do_POST(self):
+            if not self.valid() or not secrets.compare_digest(self.headers.get("X-Session", ""), session):
+                return self.send({"error": "请求来源无效"}, 403)
+            try:
+                size = int(self.headers.get("Content-Length", "0"))
+                if not 0 < size <= 131072 or self.headers.get_content_type() != "application/json":
+                    raise ValueError("请求格式无效。")
+                body = json.loads(self.rfile.read(size))
+                if not isinstance(body, dict):
+                    raise ValueError("请求格式无效。")
+                result = {}
+                if self.path == "/bots/save":
+                    controller.save_bot(body)
+                elif self.path == "/bots/select":
+                    controller.select_bot(body.get("id"))
+                elif self.path == "/bots/remove":
+                    controller.remove_bot(body.get("id"))
+                elif self.path in ("/plugins/remove", "/plugins/add"):
+                    controller.change_plugin(body.get("name"), self.path == "/plugins/remove")
+                elif self.path in ("/model/save", "/model/test"):
+                    result = controller.save_model(body, test_only=self.path == "/model/test")
+                elif self.path == "/plugins/save":
+                    controller.save_plugins(body)
+                elif self.path in ("/plugins/install", "/plugins/probe", "/plugins/start"):
+                    name = body.get("name")
+                    if name not in DEFAULT_PLUGINS:
+                        raise ValueError("未知插件。")
+                    if controller.settings["plugins"][name].get("removed"):
+                        raise ValueError("请先重新添加这个插件。")
+                    url = endpoint(body.get("url", controller.settings["plugins"][name]["url"]), local_only=True)
+                    if self.path == "/plugins/probe":
+                        result = controller.resources.probe(name, url)
+                    else:
+                        controller.resources.install(name, url)
+                        result = {"message": "正在检查本机服务和安装；没有找到时会自动安装并启动。"}
+                elif self.path == "/plugins/local":
+                    name = body.get("name")
+                    if name not in DEFAULT_PLUGINS or controller.settings["plugins"][name].get("removed") or not controller.window:
+                        raise ValueError("请在桌面窗口中选择已添加的插件。")
+                    import webview
+                    paths = controller.window.create_file_dialog(webview.FileDialog.FOLDER, allow_multiple=False)
+                    if paths:
+                        controller.resources.scan(name, paths[0])
+                        result = {"message": "已关联本地安装，无需下载。"}
+                elif self.path == "/plugins/cancel":
+                    if controller.resources.snapshot()["job"]["phase"] != "downloading":
+                        raise ValueError("当前已进入安装阶段，请等待安装完成。")
+                    controller.resources.cancel.set()
+                elif self.path == "/start":
+                    if not isinstance(body.get("key", ""), str):
+                        raise ValueError("API Key 格式无效。")
+                    controller.start(body.get("key", ""))
+                elif self.path == "/stop":
+                    threading.Thread(target=controller.stop, daemon=True).start()
+                elif self.path == "/refresh":
+                    if not controller.api or controller.snapshot()["stage"] != "qr":
+                        raise ValueError("请先开始连接。")
+                    controller.api.call("/QQLogin/RefreshQRcode")
+                elif self.path == "/exit":
+                    def close():
+                        controller.resources.cancel.set()
+                        controller.stop()
+                        self.server.shutdown()
+                        if controller.window:
+                            controller.window.destroy()
+                    threading.Thread(target=close, daemon=True).start()
+                elif self.path == "/activate":
+                    if controller.window:
+                        controller.window.restore()
+                        controller.window.show()
+                else:
+                    return self.send({"error": "未知操作"}, 404)
+                self.send({"ok": True, **result})
+            except (ValueError, OSError, RuntimeError, KeyError) as error:
+                message = str(error) if isinstance(error, ValueError) else "操作未完成，请检查输入并重试。"
+                self.send({"error": message}, 400)
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    url = f"http://127.0.0.1:{server.server_port}/#{session}"
+    if open_browser:
+        open_window(url, controller.directory)
+    return server, url
+
+
+def self_test(report):
+    import tempfile
+    from bot.config import Config
+
+    checks = []
+    def verify(condition, message):
+        if not condition:
+            raise AssertionError(message)
+
+    sample = b"self-test-only-no-real-credential"
+    encrypted = protect(sample)
+    verify(encrypted != sample and protect(encrypted, decrypt=True) == sample, "Credential encryption failed")
+    checks.append("Windows credential encryption roundtrip")
+    with tempfile.TemporaryDirectory() as temp:
+        directory = Path(temp)
+        config = make_config(3001, "test-token-only")
+        write_json(directory / "config.json", config)
+        (directory / "persona.txt").write_text("你叫桃桃。", encoding="utf-8")
+        cfg = Config.load(directory / "config.json")
+        verify(not cfg.phone.enable and not cfg.hands.enable and not cfg.douyin.enable, "Autonomous actions enabled")
+        verify(not cfg.sticker_gen.prewarm and not cfg.imagegen.enable and not cfg.bot.summary_enabled, "Background calls enabled")
+        verify(cfg.base_dir == directory, "Config data path mismatch")
+        checks.append("Starter config loads; autonomous features disabled")
+        archive = directory / "bad.zip"
+        with zipfile.ZipFile(archive, "w") as bundle:
+            bundle.writestr("../escape.txt", "forbidden")
+        try:
+            unpack_checked(archive, directory / "runtime")
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("Unsafe ZIP path was accepted")
+        checks.append("Archive traversal rejected")
+        from resources import extract_7z
+        extract_7z(ROOT / "installer-selftest.7z", directory / "extract-test")
+        verify((directory / "extract-test/safe/readme.txt").read_bytes() == b"locomotive-install-check", "Resource extraction failed")
+        checks.append("Bundled resource parser and Windows 7z extraction")
+        controller = Controller(directory / "app")
+        server, url = serve(controller, open_browser=False)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            base, token = url.split("#")
+            request = urllib.request.Request(base + "state", headers={"X-Session": token})
+            with urllib.request.urlopen(request, timeout=3) as response:
+                state = json.load(response)
+            verify(state["stage"] == "idle" and "key" not in state, "UI state leak")
+            try:
+                urllib.request.urlopen(base + "state", timeout=3)
+            except urllib.error.HTTPError as error:
+                verify(error.code == 403, "Wrong authentication rejection")
+            else:
+                raise AssertionError("Unauthenticated request was accepted")
+            checks.append("Local UI authentication; no API key in state")
+        finally:
+            server.shutdown()
+            server.server_close()
+    write_json(report, {"passed": True, "version": VERSION, "checks": checks, "real_qq_login_tested": False, "paid_api_called": False})
+
+
+def runtime_self_test(directory, report):
+    controller = Controller(directory)
+    result = {"passed": False, "account_logged_in": False, "paid_api_called": False}
+    try:
+        runtime = controller.prepare_runtime()
+        controller.setup(runtime)
+        controller.launch_qq(runtime)
+        for _ in range(90):
+            if controller.node.poll() is not None:
+                raise RuntimeError("Frozen QQ runtime exited unexpectedly")
+            try:
+                controller.api.login()
+                state = controller.api.call("/QQLogin/CheckLoginStatus")
+                qr = state.get("qrcodeurl") or controller.api.call("/QQLogin/GetQQLoginQrcode").get("qrcode")
+                if qr and not state.get("isLogin"):
+                    result.update(passed=True, qr_available=True, auth_api=True)
+                    return
+            except (OSError, ValueError, RuntimeError, KeyError):
+                pass
+            time.sleep(1)
+        raise RuntimeError("Frozen QQ runtime did not provide QR")
+    finally:
+        controller.cleanup()
+        write_json(report, result)
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--engine", action="store_true")
+    parser.add_argument("--data-dir", type=Path, default=Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "TaoTaoBot")
+    parser.add_argument("--self-test", type=Path, metavar="REPORT")
+    parser.add_argument("--runtime-self-test", type=Path, metavar="REPORT")
+    parser.add_argument("--desktop-self-test", type=Path, metavar="REPORT")
+    args = parser.parse_args()
+    if args.self_test:
+        self_test(args.self_test)
+        return 0
+    if args.runtime_self_test:
+        runtime_self_test(args.data_dir, args.runtime_self_test)
+        return 0
+    if args.desktop_self_test:
+        from desktop_check import check
+        return check(args.desktop_self_test)
+    if args.engine:
+        return run_engine(args.data_dir)
+    instance = socket.socket()
+    window = args.data_dir / "window.json"
+    try:
+        instance.bind(("127.0.0.1", 47202))
+        instance.listen(1)
+    except OSError:
+        instance.close()
+        reopen_window(window, args.data_dir)
+        return 0
+    controller = Controller(args.data_dir)
+    server, url = serve(controller, open_browser=False)
+    write_json(window, {"url": url, "pid": os.getpid()})
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        import webview
+        controller.window = open_window(url, args.data_dir)
+        def closing():
+            controller.resources.cancel.set()
+            controller.stop()
+        controller.window.events.closing += closing
+        webview.start(gui="edgechromium", private_mode=True, storage_path=str(args.data_dir / "webview"))
+    finally:
+        controller.resources.cancel.set()
+        controller.stop()
+        server.shutdown()
+        server.server_close()
+        instance.close()
+        window.unlink(missing_ok=True)
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        exit_code = main()
+    except Exception as error:
+        if not any(flag in sys.argv for flag in ("--engine", "--self-test", "--runtime-self-test", "--desktop-self-test")):
+            show_startup_error(error)
+        exit_code = 1
+    raise SystemExit(exit_code)

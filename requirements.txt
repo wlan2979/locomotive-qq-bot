@@ -1,0 +1,9 @@
+# 运行与打包依赖（取自 v4.0.0 构建环境，Python 3.13.x）
+# 注意：未在全新环境中验证过最小可用版本集合，见 README「从源码运行」。
+aiohttp>=3.14,<4
+Pillow>=13,<14
+pywebview>=6.2,<7
+pythonnet>=3.2,<4
+py7zr>=1.1,<2
+qrcode>=8,<9
+PyInstaller>=6.22,<7
