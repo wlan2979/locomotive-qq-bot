@@ -24,7 +24,7 @@ from resources import Resources
 
 
 ROOT = Path(__file__).resolve().parent
-VERSION = "4.2.1"
+VERSION = "4.2.2"
 DEFAULT_MODEL = {"provider": "DeepSeek", "base_url": "https://api.deepseek.com", "model": "deepseek-flash"}
 DEFAULT_PLUGINS = {"comfyui": {"enabled": False, "url": "http://127.0.0.1:8188", "checkpoint": ""},
                    "voicestudio": {"enabled": False, "url": "http://127.0.0.1:3900", "voice": "", "model": ""}}

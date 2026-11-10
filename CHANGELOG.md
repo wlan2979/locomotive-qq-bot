@@ -4,6 +4,24 @@
 
 本仓库的发布历史从 **v4.0.0** 开始。此前的内部构建与测试版已全部下线，其版本记录、测试报告与发布包**不属于**本项目的发布历史，也不作为本版本的验证证据。
 
+## [4.2.2] - 2026-11-10
+
+修复 v4.2.0 / v4.2.1 的 CI 失败与文档矛盾。这一版**先等 CI 绿再打 tag**。
+
+### 修复
+
+- **`--supervise` 在非中文控制台下崩溃**：守护进程直接 `print` 中文，GitHub runner 的 stdout 是 cp1252，抛 `UnicodeEncodeError`，导致 CI 的 `test_supervise_*` 失败。改为写 UTF-8 日志文件（`supervise.log`），stdout 仅在编码支持时输出。
+
+### 文档
+
+- README「已知取舍」去掉「没有守护与看门狗」—— 与上面「无头运行」章节的 `--supervise` 矛盾
+- README 仓库历史改为准确表述（不再是「单一初始提交」）
+- README 路线图把「补 WebView2 缺失提示」拆出来勾选（v4.1.1 已完成），「全新环境验证」单列
+- CHANGELOG 4.0.0 删除误归的「移除历史遗留模块」—— 该变更实际发生在 4.1.0，此前同一版本条目自相矛盾
+- CHANGELOG 4.1.1 的迁移表述修正 —— 真正的 id 迁移在 4.2.0
+- CHANGELOG 4.0.0 死链处理：该 tag 已下线，加注说明并移除链接定义
+- CONTRIBUTING 发布纪律新增硬约束：**CI 未绿不打 tag、不发 Release**
+
 ## [4.2.1] - 2026-11-10
 
 修复 v4.2.0 里「宣称了但没接上」的引擎锁，以及失败时日志为空的问题。
@@ -160,6 +178,7 @@
 - 每次只能连接一个机器人；绘图、语音合成与完整插件自动安装流程未实测。
 - 腾讯 QQ 账号风控风险，以及你自备协议端的许可约束，都不因本项目源码公开而改变。
 
+[4.2.2]: https://github.com/wlan2979/locomotive-qq-bot/releases/tag/v4.2.2
 [4.2.1]: https://github.com/wlan2979/locomotive-qq-bot/releases/tag/v4.2.1
 [4.2.0]: https://github.com/wlan2979/locomotive-qq-bot/releases/tag/v4.2.0
 [4.1.4]: https://github.com/wlan2979/locomotive-qq-bot/releases/tag/v4.1.4
