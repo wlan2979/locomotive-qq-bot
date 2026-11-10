@@ -4,7 +4,7 @@ Windows 桌面应用，用于创建、配置和连接 QQ 机器人。自己填�
 
 本软件是**通用 OneBot 11 客户端**：不做 QQ 登录、不显示二维码，也不下载或启动任何协议端。你需要自备一个已登录的 OneBot 11 兼容协议端，把它的 WebSocket 地址与访问令牌填进来。
 
-> **v4.0.0 · 本仓库第一个公开版本 · 源码与 Windows 二进制均已发布**
+> **v4.1.0 · 源码与 Windows 二进制均已发布**
 
 [更新日志](CHANGELOG.md) · [许可状态](LICENSE.md) · [安全说明](SECURITY.md) · [贡献指南](CONTRIBUTING.md)
 
@@ -18,8 +18,8 @@ Windows 桌面应用，用于创建、配置和连接 QQ 机器人。自己填�
 | 项 | 状态 |
 | --- | --- |
 | 应用源码 | ✅ 已公开（`src/`，40 个文件） |
-| 二进制安装包 | ✅ [Locomotive-v4.0.0-Windows-x64.zip](https://github.com/wlan2979/locomotive-qq-bot/releases/download/v4.0.0/Locomotive-v4.0.0-Windows-x64.zip)（22,434,176 字节） |
-| 版本号 | `4.0.0`（`src/app.py` 的 `VERSION`） |
+| 二进制安装包 | ✅ [Locomotive-v4.1.0-Windows-x64.zip](https://github.com/wlan2979/locomotive-qq-bot/releases/download/v4.1.0/Locomotive-v4.1.0-Windows-x64.zip)（22,434,401 字节） |
+| 版本号 | `4.1.0`（`src/app.py` 的 `VERSION`） |
 | 仓库历史 | 已重置为**单一初始提交**，v4.0.0 是唯一版本起点 |
 | 全新环境验证 | ❌ 未做。`requirements.txt` 取自原构建环境，最小可用集合未验证 |
 | 正式开源许可证 | ❌ 未授予 |
@@ -28,13 +28,13 @@ Windows 桌面应用，用于创建、配置和连接 QQ 机器人。自己填�
 
 ## 下载
 
-**[Locomotive-v4.0.0-Windows-x64.zip](https://github.com/wlan2979/locomotive-qq-bot/releases/download/v4.0.0/Locomotive-v4.0.0-Windows-x64.zip)**（22,434,176 字节）
+**[Locomotive-v4.1.0-Windows-x64.zip](https://github.com/wlan2979/locomotive-qq-bot/releases/download/v4.1.0/Locomotive-v4.1.0-Windows-x64.zip)**（22,434,401 字节）
 
 ```text
-SHA-256  6651b9d3163aa1c8f5e00f0cc8b48b39bb91a08f20560d0c80b2107efd0362ab
+SHA-256  f568fa5e9689761927e2e246d828327efbceea75b9b318bddebf0084938346ff
 ```
 
-解压后得到 `Locomotive/` 目录，含 `Locomotive.exe`（22,622,930 字节）、`Locomotive-使用说明.txt`、`THIRD_PARTY_NOTICES.txt`。
+解压后得到 `Locomotive/` 目录，含 `Locomotive.exe`（22,623,195 字节）、`Locomotive-使用说明.txt`、`THIRD_PARTY_NOTICES.txt`。
 
 运行前需要 Microsoft Edge WebView2 运行时，并自备一个已登录的 OneBot 11 兼容协议端。
 
@@ -100,7 +100,7 @@ cd src
 python -m unittest discover -p "test_*.py" -q
 ```
 
-另附 `test_frozen_engine.py`（模拟 QQ / 模型服务的收发与停止）、`desktop_check.py`（原生窗口）。运行前确认没有真实机器人占用引擎端口。**旧版本留下的测试报告不能作为 v4.0.0 的验证证据。**
+另附 `test_frozen_engine.py`（模拟 QQ / 模型服务的收发与停止）、`desktop_check.py`（原生窗口）。运行前确认没有真实机器人占用引擎端口。**旧版本留下的测试报告不能作为 v4.1.0 的验证证据。**
 
 ## 源码结构
 
@@ -165,7 +165,7 @@ python -m unittest discover -p "test_*.py" -q
 - [x] **协议层解耦**：移除内置协议端的自动下载 / 配置 / 启动，改为通用 OneBot 11 客户端，用户自备兼容协议端并填写 WebSocket 地址与 Token
 - [x] 裁剪 `bot/` 中的历史遗留模块：抖音、手机自动化、视频生成、灵感库共 9 个文件已移除，`bot/` 降到 16 个模块
 - [ ] 全新环境端到端验证，补 WebView2 缺失提示
-- [x] 打包并发布第一个可用二进制版本（v4.0.0，SHA-256 已写入 Release 与 README）
+- [x] 打包并发布二进制版本（v4.1.0，SHA-256 已写入 Release 与 README）
 - [ ] 数据导出：把人设、记忆、设置导出为通用格式，降低迁移成本
 - [ ] 补作者声明，确定正式开源许可证
 
