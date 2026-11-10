@@ -413,14 +413,14 @@ class ImageGenConfig:
     #
     # ## 为什么需要（2026-10-22 的真实事故）
     #
-    # `comfyui_lora` 原来是无条件挂的。用户训了桃桃的角色 LoRA 之后，
+    # `comfyui_lora` 原来是无条件挂的。训了某个角色的 LoRA 之后，
     # 画**宫园薰**（`kaori miyazono, blonde hair, blue eyes`）也照样挂上去，
-    # 脸型/发色全被拽向桃桃 —— 用户的反馈是「animagine 模型效果不如之前了」。
+    # 脸型/发色全被拽向那个角色 —— 用户的反馈是「animagine 模型效果不如之前了」。
     # 模型没变差，是 LoRA 污染了每一个角色。
     #
     # LoRA 本来就是靠触发词激活的。配了触发词之后：
-    #   prompt 含 `taotao` → 挂（画她自己）
-    #   prompt 不含        → 不挂（画别人）
+    #   prompt 含触发词 → 挂（画这个角色）
+    #   prompt 不含      → 不挂（画别人）
     #
     # **留空 = 保持旧行为（总是挂）** —— 不悄悄改变已有配置的语义。
     comfyui_lora_trigger: str = ""

@@ -313,7 +313,7 @@ def main() -> int:
             print("    · 同一句话回两遍，或者干脆不回")
             print("    · 发图报「网络连接异常」「rich media transfer failed」")
             print()
-            print("  要重启就先双击「桃桃 → stop.bat」，再 run.bat。")
+            print("  要重启就先停掉旧进程，再重新启动。")
             print("=" * 64)
             print()
             return 3

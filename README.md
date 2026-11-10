@@ -4,7 +4,7 @@ Windows 桌面应用，用于创建、配置和连接 QQ 机器人。自己填�
 
 本软件是**通用 OneBot 11 客户端**：不做 QQ 登录、不显示二维码，也不下载或启动任何协议端。你需要自备一个已登录的 OneBot 11 兼容协议端，把它的 WebSocket 地址与访问令牌填进来。
 
-> **v4.1.4 · 源码与 Windows 二进制均已发布**
+> **v4.2.0 · 源码与 Windows 二进制均已发布**
 
 [更新日志](CHANGELOG.md) · [许可证](LICENSE) · [安全说明](SECURITY.md) · [贡献指南](CONTRIBUTING.md)
 
@@ -18,8 +18,8 @@ Windows 桌面应用，用于创建、配置和连接 QQ 机器人。自己填�
 | 项 | 状态 |
 | --- | --- |
 | 应用源码 | ✅ 已公开（`src/`，30 个源码文件，不含构建产物） |
-| 二进制安装包 | ✅ [Locomotive-v4.1.4-Windows-x64.zip](https://github.com/wlan2979/locomotive-qq-bot/releases/download/v4.1.4/Locomotive-v4.1.4-Windows-x64.zip)（22,444,197 字节） |
-| 版本号 | `4.1.4`（`src/app.py` 的 `VERSION`） |
+| 二进制安装包 | ✅ [Locomotive-v4.2.0-Windows-x64.zip](https://github.com/wlan2979/locomotive-qq-bot/releases/download/v4.2.0/Locomotive-v4.2.0-Windows-x64.zip)（22,450,331 字节） |
+| 版本号 | `4.2.0`（`src/app.py` 的 `VERSION`） |
 | 仓库历史 | 已重置为**单一初始提交**，v4.0.0 是唯一版本起点 |
 | 全新环境验证 | ❌ 未做。`requirements.txt` 取自原构建环境，最小可用集合未验证 |
 | 许可证 | ✅ PolyForm Noncommercial 1.0.0（除商业用途外均允许） |
@@ -28,13 +28,13 @@ Windows 桌面应用，用于创建、配置和连接 QQ 机器人。自己填�
 
 ## 下载
 
-**[Locomotive-v4.1.4-Windows-x64.zip](https://github.com/wlan2979/locomotive-qq-bot/releases/download/v4.1.4/Locomotive-v4.1.4-Windows-x64.zip)**（22,444,197 字节）
+**[Locomotive-v4.2.0-Windows-x64.zip](https://github.com/wlan2979/locomotive-qq-bot/releases/download/v4.2.0/Locomotive-v4.2.0-Windows-x64.zip)**（22,450,331 字节）
 
 ```text
-SHA-256  455d8c2f6c5b9e3825fec7833d9251a87ba958039cd6ec10a53d00ead26dcbcb
+SHA-256  982b3277a0aa2daef2a24eaea8f40f451a421efd07bfac12db488b881a147eaf
 ```
 
-解压后得到 `Locomotive/` 目录，含 `Locomotive.exe`（22,635,313 字节）、`Locomotive-使用说明.txt`、`THIRD_PARTY_NOTICES.txt`、`LICENSE`。
+解压后得到 `Locomotive/` 目录，含 `Locomotive.exe`（22,644,799 字节）、`Locomotive-使用说明.txt`、`THIRD_PARTY_NOTICES.txt`、`LICENSE`。
 
 运行前需要 Microsoft Edge WebView2 运行时，并自备一个已登录的 OneBot 11 兼容协议端。
 
@@ -66,7 +66,7 @@ python app.py
 
 - 先自行准备并登录一个 OneBot 11 兼容协议端，在「模型」页底部填写它的 WebSocket 地址与访问令牌。
 - 模型 API Key 在「模型」页填写，由 Windows 当前账户 DPAPI 加密保存在本机。**不要写进任何文件并提交。**
-- 应用数据在 `%LOCALAPPDATA%\TaoTaoBot`，含密钥、QQ 登录状态与聊天记录，**绝不分享或提交**。
+- 应用数据在 `%LOCALAPPDATA%\Locomotive`，含密钥、QQ 登录状态与聊天记录，**绝不分享或提交**。
 - 程序生成的 `config.json`、`window.json`、`data/`、`logs/` 均已在 `.gitignore` 中排除。
 - 自备模型 API Key，调用费用由使用者承担；仓库不含任何密钥。
 
@@ -84,14 +84,22 @@ python -m PyInstaller --noconfirm Locomotive.spec
 桌面程序关窗即退出，这是它的形态。如果你希望它常驻后台，用引擎模式：
 
 ```bat
-Locomotive.exe --engine --data-dir "%LOCALAPPDATA%\TaoTaoBot"
+Locomotive.exe --engine --data-dir "%LOCALAPPDATA%\Locomotive"
 ```
 
 这个模式不创建窗口，只跑 OneBot 连接和聊天引擎；日志写到数据目录的 `bot-process.log`。停止方式：在数据目录下创建一个空文件 `engine-stop`，进程会优雅退出并保存历史。
 
 想开机自启，用「任务计划程序」：触发器设为登录时，操作填 `Locomotive.exe`，参数 `--engine --data-dir "<你的数据目录>"`。注意 DPAPI 密钥绑定当前 Windows 账户，别换账户运行。
 
-**这个模式没有托盘、没有自动重启**。进程崩了不会自己起来，需要任务计划的「失败后重新启动」，或第三方守护工具。
+**要自动重启就加 `--supervise`**：
+
+```bat
+Locomotive.exe --supervise --data-dir "%LOCALAPPDATA%\Locomotive"
+```
+
+父进程守着引擎子进程，退出就按 3 → 6 → 12 → 30 → 60 秒退避重启。在数据目录放一个空的 `engine-stop` 文件，守护进程会一起退出。
+
+`--supervise` 本身没有托盘、没有开机自启，那部分交给任务计划程序。
 
 ## 测试
 
@@ -100,7 +108,7 @@ cd src
 python -m unittest discover -p "test_*.py" -q
 ```
 
-另附 `test_frozen_engine.py`（模拟 QQ / 模型服务的收发与停止）、`desktop_check.py`（原生窗口）。运行前确认没有真实机器人占用引擎端口。**旧版本留下的测试报告不能作为 v4.1.4 的验证证据。**
+另附 `test_frozen_engine.py`（模拟 QQ / 模型服务的收发与停止）、`desktop_check.py`（原生窗口）。运行前确认没有真实机器人占用引擎端口。**旧版本留下的测试报告不能作为 v4.2.0 的验证证据。**
 
 ## 源码结构
 
@@ -119,11 +127,11 @@ python -m unittest discover -p "test_*.py" -q
 
 ## 已移除的历史遗留模块
 
-早期「桃桃」项目带来的抖音、手机自动化、视频生成等模块已全部移除，共 9 个文件：
+早期项目带来的抖音、手机自动化、视频生成等模块已全部移除，共 9 个文件：
 
 - `douyin_commenter.py`、`douyin_publisher.py`、`douyin_scheduler.py`、`douyin_share.py`
 - `phone.py`（手机/模拟器自动化）、`hands.py`（真机屏幕操作）
-- `seedance.py`（图生视频）、`taotao_video.py`（视频合成）、`inspiration.py`（灵感库）
+- `seedance.py`（图生视频）、视频合成模块、`inspiration.py`（灵感库）
 
 `bot/core.py` 里对应的工具注册、工具执行分支、定时循环与主动发言逻辑也一并删除；配置里的 `phone` / `hands` / `douyin` / `seedance` 四段全部去掉。`bot/` 从 24 个模块降到 16 个，总行数减少约一半。
 
@@ -146,9 +154,11 @@ python -m unittest discover -p "test_*.py" -q
 
 **能同时连多个机器人吗？** 一个数据目录只能连一个机器人；用 `--data-dir` 指定不同目录可以并行多开。切换机器人前先停止当前连接。
 
+**记忆能清吗？** 侧栏「记忆」页按会话列出条数，可以单独清空或全部清空。清空前要先停止机器人，操作不可撤销。
+
 **出错了怎么查？** 侧栏「日志」页显示引擎日志尾部 300 行，`ERROR` 标红；也可以点「打开数据目录」直接翻 `bot-process.log`。
 
-**数据存在哪？** `%LOCALAPPDATA%\TaoTaoBot`，含加密密钥、聊天记录与设置，**不要分享或提交**。目录名沿用早期版本，改名会导致旧数据丢失，所以保留。
+**数据存在哪？** `%LOCALAPPDATA%\Locomotive`，含加密密钥、聊天记录与设置，**不要分享或提交**。旧版数据目录会在首次启动时自动复制到这里，旧目录保留不删。
 
 **怎么自己打包？** 见上文「打包」，`src/Locomotive.spec` 是全相对路径的。
 
@@ -166,7 +176,7 @@ python -m unittest discover -p "test_*.py" -q
 ## 已知取舍
 
 - **形态**：桌面 GUI 单体进程，关窗即停，没有守护与看门狗。这是「看得见的桌面工作台」这个定位带来的代价，改成常驻服务等于重写 UI 层。无头场景请用上面的 `--engine` 模式。
-- **数据可迁移性**：人设、记忆、设置存在 `%LOCALAPPDATA%\TaoTaoBot` 的私有结构里，与内部 config schema 绑定，**目前没有导出功能**。想迁到其他机器人框架只能手工重建。
+- **数据可迁移性**：人设、记忆、设置存在 `%LOCALAPPDATA%\Locomotive` 的私有结构里，与内部 config schema 绑定，**目前没有导出功能**。想迁到其他机器人框架只能手工重建。
 - **平台**：Windows 独占，依赖 WebView2 运行时。启动前会查注册表主动探测，缺失时直接弹窗给出下载地址并退出，不会退化成白屏；但不会自动安装。
 - **维护**：单人项目，issue 与第三方验证都很少，遇到问题主要靠读源码。
 - **会联网检查版本**：启动时向 `github.com` 读取一次公开的 Releases feed，只取版本号用于提示，不发送任何本地数据；失败静默，不影响使用。
@@ -179,7 +189,7 @@ python -m unittest discover -p "test_*.py" -q
 - [x] **协议层解耦**：移除内置协议端的自动下载 / 配置 / 启动，改为通用 OneBot 11 客户端，用户自备兼容协议端并填写 WebSocket 地址与 Token
 - [x] 裁剪 `bot/` 中的历史遗留模块：抖音、手机自动化、视频生成、灵感库共 9 个文件已移除，`bot/` 降到 16 个模块
 - [ ] 全新环境端到端验证，补 WebView2 缺失提示
-- [x] 打包并发布二进制版本（v4.1.4，SHA-256 已写入 Release 与 README）
+- [x] 打包并发布二进制版本（v4.2.0，SHA-256 已写入 Release 与 README）
 - [ ] 数据导出：把人设、记忆、设置导出为通用格式，降低迁移成本
 - [ ] 补作者声明，确定正式开源许可证
 

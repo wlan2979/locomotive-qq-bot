@@ -19,7 +19,7 @@ async def check(executable, directory):
     async def model(request):
         payload = await request.json()
         requests.append(payload)
-        return web.json_response({"id": "offline-test", "choices": [{"message": {"role": "assistant", "content": "你好，我是桃桃。"}, "finish_reason": "stop"}],
+        return web.json_response({"id": "offline-test", "choices": [{"message": {"role": "assistant", "content": "你好，我是小北。"}, "finish_reason": "stop"}],
                                   "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}})
 
     async def onebot(request):
@@ -58,7 +58,7 @@ async def check(executable, directory):
     config["deepseek"]["api_key"] = "fake-key-used-only-on-loopback"
     config["bot"].update(split_messages=False, enable_vision=False)
     app.write_json(directory / "config.json", config)
-    (directory / "persona.txt").write_text("你叫桃桃，友善地用中文聊天。", encoding="utf-8")
+    (directory / "persona.txt").write_text("你叫小北，友善地用中文聊天。", encoding="utf-8")
     (directory / "engine-stop").unlink(missing_ok=True)
     (directory / "engine-ready.json").unlink(missing_ok=True)
     environment = os.environ.copy()

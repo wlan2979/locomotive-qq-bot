@@ -65,7 +65,7 @@ Locomotive 是**通用 OneBot 11 客户端**：它自己不做 QQ 登录，需�
 
 - 群聊必须 @ 机器人；私聊直接发
 - 协议端是否配置了「上报自身消息」（`reportSelfMessage`），开了会导致自己回自己
-- 看 `%LOCALAPPDATA%\TaoTaoBot\bot-process.log` 有没有「收到消息」记录
+- 看 `%LOCALAPPDATA%\Locomotive\bot-process.log` 有没有「收到消息」记录
 
 **令牌报错**
 

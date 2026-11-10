@@ -111,6 +111,26 @@ class AppTests(unittest.TestCase):
             self.assertEqual(config["deepseek"]["api_key"], "")
             self.assertEqual(config["onebot"]["ws_url"], "ws://127.0.0.1:3001")
 
+    def test_memory_snapshot_and_clear(self):
+        with tempfile.TemporaryDirectory() as temp:
+            controller = app.Controller(Path(temp))
+            path = controller.directory / "data" / "history.json"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            app.write_json(path, {"version": 4, "summaries": {}, "sessions": {
+                "group:1": [{"role": "user", "content": "你好"}, {"role": "assistant", "content": "在"}]}})
+            snap = controller.memory_snapshot()
+            self.assertTrue(snap["exists"])
+            self.assertEqual(len(snap["sessions"]), 1)
+            self.assertEqual(snap["sessions"][0]["count"], 2)
+            controller.clear_memory("group:1")
+            self.assertEqual(controller.memory_snapshot()["sessions"], [])
+
+    def test_supervise_returns_immediately_when_stop_marker_exists(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            (directory / "engine-stop").touch()
+            self.assertEqual(app.supervise(directory), 0)
+
     def test_logs_endpoint_returns_tail(self):
         with tempfile.TemporaryDirectory() as temp:
             controller = app.Controller(Path(temp))

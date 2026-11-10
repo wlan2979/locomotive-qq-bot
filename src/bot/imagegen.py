@@ -205,7 +205,7 @@ GENERATE_IMAGE_TOOL: Dict[str, Any] = {
                     "type": "boolean",
                     "description": (
                         "**对方让你画「你自己」时填 true** —— 「画一下你自己」"
-                        "「画个你」「来张自拍」「画桃桃」这类。\n"
+                        "「画个你」「来张自拍」「画你自己」这类。\n"
                         "填了之后系统会把你的**固定外貌**（黑发、深棕眼、小个子、"
                         "齐刘海）自动补进 prompt，**所以 prompt 里千万别再写这些**，"
                         "只写这几样：服装、发型（**对方没要求就干脆别写**，"
@@ -2487,12 +2487,12 @@ async def _generate_comfyui(
     # ---- LoRA 只在「画这个角色」时挂（2026-10-22 加）----
     #
     # 之前 `comfyui_lora` 一配就**无条件挂到每一次生图**。后果：画宫园薰
-    # （`kaori miyazono, blonde hair, blue eyes`）时桃桃的角色 LoRA 照样生效，
-    # 脸型、发色、气质全被拽向桃桃 —— 用户的原话是「animagine 模型效果不如之前了」。
+    # （`kaori miyazono, blonde hair, blue eyes`）时角色的 LoRA 照样生效，
+    # 脸型、发色、气质全被拽向那个角色 —— 用户的原话是「animagine 模型效果不如之前了」。
     # 那不是模型变差，是 LoRA 在污染所有角色。
     #
     # LoRA 本来就是靠**触发词**激活的东西。所以：
-    #   · 配了 `comfyui_lora_trigger`（如 `taotao`）→ prompt 里含这个词才挂
+    #   · 配了 `comfyui_lora_trigger` → prompt 里含这个词才挂
     #   · 没配触发词 → 保持旧行为（总是挂），避免悄悄改变已有配置的语义
     #
     # 判断用**原始 prompt** 而不是拼了质量前缀的 full_prompt：
@@ -2521,12 +2521,12 @@ async def _generate_comfyui(
             # ⚠️ 2026-10-24 改了这里：Anima 现在**有**原生 LoRA 了。
             #
             # 以前这段是无条件清空，因为手上只有 SDXL LoRA，挂上去是静默无效。
-            # 现在用 `networks.lora_anima` 训出了 Anima 版（taotao_anima_lora），
+            # 现在用 `networks.lora_anima` 训出了 Anima 版，
             # 键名同样是 lora_unet_*，但 shape 对得上 28 blocks / 2048 dim。
             #
             # 靠**文件名**区分两代 LoRA：
-            #   · taotao_anima_lora.safetensors → Anima 原生，挂
-            #   · taotao_lora.safetensors       → SDXL，挡掉（挂上去不报错但无效，
+            #   · *_anima_lora.safetensors → Anima 原生，挂
+            #   · 其它 *_lora.safetensors → SDXL，挡掉（挂上去不报错但无效，
             #                                      比报错更坑：会让人以为画对了）
             if "anima" in lora_file.lower():
                 log.info(

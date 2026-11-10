@@ -12,7 +12,7 @@ v4.0.0 起应用源码在 `src/`，**欢迎提交代码 PR**。但请先知道�
 
 走 [Issue 模板](https://github.com/wlan2979/locomotive-qq-bot/issues/new/choose)，写清版本 / 提交、Windows 版本、Python 版本、WebView2 情况、复现步骤与期望行为。
 
-**脱敏是硬性要求**：不要上传 API Key、QQ 号、登录令牌、二维码截图、`window.json`、聊天记录，或 `%LOCALAPPDATA%\TaoTaoBot` 目录里的任何内容。日志也要先删敏感字段。发现别人误贴了凭据，请提醒对方并联系维护者删除，不要转发。
+**脱敏是硬性要求**：不要上传 API Key、QQ 号、登录令牌、二维码截图、`window.json`、聊天记录，或 `%LOCALAPPDATA%\Locomotive` 目录里的任何内容。日志也要先删敏感字段。发现别人误贴了凭据，请提醒对方并联系维护者删除，不要转发。
 
 ## 发布纪律（维护者）
 

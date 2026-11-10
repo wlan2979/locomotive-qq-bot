@@ -11,6 +11,7 @@ import os
 import re
 from pathlib import Path
 import secrets
+import shutil
 import subprocess
 import sys
 import threading
@@ -23,12 +24,31 @@ from resources import Resources
 
 
 ROOT = Path(__file__).resolve().parent
-VERSION = "4.1.4"
+VERSION = "4.2.0"
 DEFAULT_MODEL = {"provider": "DeepSeek", "base_url": "https://api.deepseek.com", "model": "deepseek-flash"}
 DEFAULT_PLUGINS = {"comfyui": {"enabled": False, "url": "http://127.0.0.1:8188", "checkpoint": ""},
                    "voicestudio": {"enabled": False, "url": "http://127.0.0.1:3900", "voice": "", "model": ""}}
 DEFAULT_ONEBOT = {"ws_url": "ws://127.0.0.1:3001", "access_token": ""}
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+DATA_DIR_NAME = "Locomotive"
+LEGACY_DATA_DIR_NAME = "TaoTaoBot"
+
+
+def default_data_dir() -> Path:
+    """默认数据目录。旧版本用的是另一个名字，首次启动时复制过来，旧目录保留不动。
+
+    复制失败就继续用旧目录 —— 宁可名字不好看，也不能让用户丢数据。
+    """
+    base = Path(os.environ.get("LOCALAPPDATA", str(Path.home())))
+    current = base / DATA_DIR_NAME
+    legacy = base / LEGACY_DATA_DIR_NAME
+    if not current.exists() and legacy.exists():
+        try:
+            shutil.copytree(legacy, current)
+        except OSError:
+            return legacy
+    return current
 
 
 def write_json(path: Path, value):
@@ -207,7 +227,7 @@ def reopen_window(window: Path, directory: Path):
 
 
 def show_startup_error(error):
-    directory = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "TaoTaoBot"
+    directory = default_data_dir()
     detail = str(error) or type(error).__name__
     lowered = detail.lower()
     if any(k in lowered for k in ("webview", "edgechromium", "mshtml", "runtime")):
@@ -264,6 +284,13 @@ class Controller:
         default_persona = persona_path.read_text("utf-8") if persona_path.exists() else (ROOT / "persona.txt").read_text("utf-8")
         self.settings.setdefault("bots", [{"id": "default", "name": "我的机器人", "persona": default_persona}])
         self.settings.setdefault("selected_bot", "default")
+        # 旧版默认机器人的 id 是历史字符串，一次性改名到 default。
+        # 数据本来就在数据目录根，不需要搬文件；这里保留旧字符串仅为识别老配置。
+        for bot in self.settings["bots"]:
+            if bot.get("id") == "taotao":
+                bot["id"] = "default"
+        if self.settings.get("selected_bot") == "taotao":
+            self.settings["selected_bot"] = "default"
         if not any(bot["id"] == self.settings["selected_bot"] for bot in self.settings["bots"]):
             self.settings["selected_bot"] = self.settings["bots"][0]["id"] if self.settings["bots"] else None
         self.directory = self.bot_directory(self.settings["selected_bot"]) if self.settings["selected_bot"] else self.root_directory
@@ -281,6 +308,48 @@ class Controller:
         self.window = None
         self.latest_version = None
 
+
+    def memory_snapshot(self):
+        """读 history.json，给出会话概览。引擎在跑时也能读，但删除必须停机。"""
+        path = self.directory / "data" / "history.json"
+        if not path.is_file():
+            return {"exists": False, "sessions": [], "path": str(path)}
+        try:
+            data = json.loads(path.read_text("utf-8"))
+        except (OSError, ValueError):
+            return {"exists": False, "sessions": [], "path": str(path), "error": "history.json 无法解析"}
+        sessions = []
+        for key, messages in (data.get("sessions") or {}).items():
+            if not isinstance(messages, list):
+                continue
+            last = messages[-1] if messages else {}
+            content = last.get("content") if isinstance(last, dict) else ""
+            sessions.append({"key": key, "count": len(messages),
+                             "last": str(content or "")[:160]})
+        sessions.sort(key=lambda item: item["key"])
+        return {"exists": True, "sessions": sessions, "path": str(path),
+                "summary_count": len(data.get("summaries") or {})}
+
+    def clear_memory(self, key=None):
+        with self.lock:
+            self.require_idle()
+            path = self.directory / "data" / "history.json"
+            if not path.is_file():
+                return {"message": "没有可清理的记忆。"}
+            data = json.loads(path.read_text("utf-8"))
+            if key:
+                if key not in (data.get("sessions") or {}):
+                    raise ValueError("找不到这个会话。")
+                data["sessions"].pop(key, None)
+                (data.get("summaries") or {}).pop(key, None)
+                message = "已清空该会话的记忆。"
+            else:
+                data["sessions"] = {}
+                data["summaries"] = {}
+                message = "已清空全部记忆。"
+            write_json(path, data)
+            return {"message": message}
+
     def check_updates(self):
         """后台查一次最新版本；比当前新就记下来，供界面提示。"""
         latest = latest_release_version()
@@ -291,7 +360,8 @@ class Controller:
     def bot_directory(self, bot_id):
         if not isinstance(bot_id, str) or not bot_id or any(c not in "abcdefghijklmnopqrstuvwxyz0123456789_-" for c in bot_id):
             raise ValueError("机器人标识无效。")
-        return self.root_directory if bot_id == "taotao" else self.root_directory / "bots" / bot_id
+        # 默认机器人直接用数据目录根，其余按 id 分子目录。
+        return self.root_directory if bot_id == "default" else self.root_directory / "bots" / bot_id
 
     def selected_bot(self):
         return next((bot for bot in self.settings["bots"] if bot["id"] == self.settings["selected_bot"]), None)
@@ -565,6 +635,46 @@ class Controller:
                 self.stopping = False
 
 
+
+def supervise(data_dir: Path):
+    """守护 --engine 子进程：退出就重启，退避 3 → 6 → 12 → 30 → 60 秒。
+
+    `engine-stop` 出现表示用户主动停止，此时守护进程也退出，不再拉起。
+    跑满 60 秒后退出视为「曾经正常工作过」，退避重置回 3 秒。
+    """
+    data_dir = Path(data_dir).resolve()
+    data_dir.mkdir(parents=True, exist_ok=True)
+    stop = data_dir / "engine-stop"
+    delay = 3.0
+    while True:
+        if stop.exists():
+            print("检测到 engine-stop，守护进程退出。", flush=True)
+            return 0
+        arguments = [sys.executable] if getattr(sys, "frozen", False) else [sys.executable, str(Path(__file__).resolve())]
+        child = subprocess.Popen(arguments + ["--engine", "--data-dir", str(data_dir)],
+                                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                 stderr=subprocess.DEVNULL, creationflags=NO_WINDOW)
+        started = time.monotonic()
+        try:
+            child.wait()
+        except KeyboardInterrupt:
+            child.terminate()
+            try:
+                child.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                child.kill()
+            return 0
+        if stop.exists():
+            print("检测到 engine-stop，守护进程退出。", flush=True)
+            return 0
+        ran = time.monotonic() - started
+        if ran >= 60:
+            delay = 3.0
+        print(f"引擎退出（退出码 {child.returncode}，运行 {ran:.0f} 秒），{delay:.0f} 秒后重启…", flush=True)
+        time.sleep(delay)
+        delay = min(delay * 2, 60.0)
+
+
 def run_engine(directory):
     import logging
     import engine_main
@@ -577,6 +687,7 @@ def run_engine(directory):
     sys.stdout = sys.stderr = output
     bot.sticker.STICKER_ROOT = directory / "assets/stickers"
     bot.sticker_gen.STICKER_ROOT = directory / "assets/stickers"
+    bot.sticker_gen.LORA_TRIGGER = getattr(cfg.imagegen, "comfyui_lora_trigger", "") or ""
 
     class Ready(logging.Handler):
         def emit(self, record):
@@ -649,6 +760,8 @@ def serve(controller, open_browser=True):
                 return self.send({"error": "请从程序打开的窗口访问。"}, 403)
             if self.path == "/state":
                 return self.send(controller.snapshot())
+            if self.path == "/memory":
+                return self.send(controller.memory_snapshot())
             if self.path.startswith("/logs"):
                 query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
                 try:
@@ -692,6 +805,8 @@ def serve(controller, open_browser=True):
                     controller.save_plugins(body)
                 elif self.path == "/onebot/save":
                     result = controller.save_onebot(body)
+                elif self.path == "/memory/clear":
+                    result = controller.clear_memory(body.get("key"))
                 elif self.path == "/open-data-dir":
                     os.startfile(str(controller.directory))
                     result = {"message": "已打开数据目录。"}
@@ -815,7 +930,8 @@ def runtime_self_test(directory, report):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--engine", action="store_true")
-    parser.add_argument("--data-dir", type=Path, default=Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "TaoTaoBot")
+    parser.add_argument("--supervise", action="store_true")
+    parser.add_argument("--data-dir", type=Path, default=default_data_dir())
     parser.add_argument("--self-test", type=Path, metavar="REPORT")
     parser.add_argument("--runtime-self-test", type=Path, metavar="REPORT")
     parser.add_argument("--desktop-self-test", type=Path, metavar="REPORT")
@@ -829,6 +945,8 @@ def main():
     if args.desktop_self_test:
         from desktop_check import check
         return check(args.desktop_self_test)
+    if args.supervise:
+        return supervise(args.data_dir)
     if args.engine:
         return run_engine(args.data_dir)
     window = args.data_dir / "window.json"

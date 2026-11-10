@@ -27,7 +27,7 @@
 依据是用户给的参考图 + 一句「不要太q版」。逐项对照见 `STICKER_STYLE` 上方的表。
 
 **② 是她本人。**
-LoRA（`taotao_lora.safetensors`，触发词 `taotao`）管脸型、创可贴脸、
+LoRA（`*_lora.safetensors`，靠配置里的触发词激活）管脸型、创可贴脸、
 徽章、服装姿势；prompt 补 `black hair, brown eyes, blunt bangs` ——
 **训练标注漏了发色瞳色**，不补的话每次采样发色随机
 （实测一次黑发内层蓝挑染、一次灰白发）。服装标签逐字对齐训练集
@@ -295,7 +295,7 @@ STICKER_POSITIVE = "masterpiece, best quality, sticker"
 # ## 脸上贴纸：能压到约一半，压不干净（2026-10-20 实测）
 #
 # LoRA 是从 30 张训练图学的人物，那批图里**大半张脸上挂着贴纸**
-# （小熊、云朵、星星造型）。原参考图 `assets/taotao/ref_*.jpg` 里没有这个特征 ——
+# （小熊、云朵、星星造型）。原参考图里没有这个特征 ——
 # 是训练数据自带的，被 LoRA 当角色特征学进去了。用户 10-20 明确要求删掉。
 #
 # 实测四组（`tests/_exp_sticker_bandaid.py`，同 prompt 各 2 张）：
@@ -438,13 +438,16 @@ def _add_sticker_border(
 DEFAULT_CACHE_PER_MOOD = 6
 
 
+# 角色 LoRA 的触发词。由 app.run_engine 从配置注入；留空表示不使用触发词。
+LORA_TRIGGER = ""
+
+
 def _character_tags(lora_on: bool = False) -> str:
     """角色固定特征。**延迟导入** core —— 那边也 import 本模块，顶层导入会成环。
 
     ## 有 LoRA 时：LoRA 管它学过的，prompt 管它没学的
 
-    LoRA 只会学到**标注里出现过的东西**。桃桃这次训练集（30 张，
-    `D:/DS/lora-data/taotao/*.txt`）的标注覆盖了：
+    LoRA 只会学到**标注里出现过的东西**。这套训练集（30 张）的标注覆盖了：
 
         发型（long hair / low twintails / hair bun / ponytail）
         服装（各种）、姿势、场景、构图、表情
@@ -454,7 +457,7 @@ def _character_tags(lora_on: bool = False) -> str:
     实测同一个 prompt 两次出图，一次黑发内层蓝挑染、一次灰白发。
 
     所以 LoRA 版不是「什么都不写」，而是**只写它没学的**：
-        `taotao`    —— 激活角色（脸型、气质、创可贴脸这些全在里面）
+        触发词       —— 激活角色（脸型、气质、创可贴脸这些全在里面）
         `black hair, brown eyes, blunt bangs` —— 补上标注漏掉的三项
 
     为什么发型**不写**：训练集里发型本来就是多样化的（20 张 low twintails、
@@ -462,7 +465,9 @@ def _character_tags(lora_on: bool = False) -> str:
     写死 `low twintails` 等于跟这个学习成果对着干。
     """
     if lora_on:
-        return "taotao, black hair, brown eyes, blunt bangs, 1girl, solo"
+        tags = "black hair, brown eyes, blunt bangs, 1girl, solo"
+        trigger = LORA_TRIGGER.strip()
+        return f"{trigger}, {tags}" if trigger else tags
 
     try:
         from .core import SELF_CHARACTER_TAGS, SELF_DEFAULT_HAIR
