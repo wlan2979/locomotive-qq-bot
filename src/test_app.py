@@ -1,5 +1,3 @@
-import hashlib
-import io
 import json
 from pathlib import Path
 import tempfile
@@ -8,7 +6,6 @@ import unittest
 from unittest.mock import patch, MagicMock
 import urllib.error
 import urllib.request
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import app
 
@@ -57,7 +54,7 @@ class AppTests(unittest.TestCase):
                 launch.assert_not_called()
 
     def test_config_has_no_api_key_and_no_autonomous_actions(self):
-        config = app.make_config(12345, "local-test-only")
+        config = app.make_config("ws://127.0.0.1:12345", "local-test-only")
         self.assertEqual(config["deepseek"]["api_key"], "")
         self.assertEqual(config["onebot"]["ws_url"], "ws://127.0.0.1:12345")
         for section, name in [("phone", "enable"), ("hands", "enable"), ("douyin", "enable"),
@@ -69,7 +66,7 @@ class AppTests(unittest.TestCase):
             controller = app.Controller(Path(temp))
             key = "fake-key-for-offline-tests-only"
             with patch("app.validate_model_key", return_value="ok"), \
-                 patch.object(controller, "prepare_runtime", side_effect=InterruptedError):
+                 patch.object(controller, "launch_engine", side_effect=InterruptedError):
                 controller.start(key)
                 controller.worker.join(2)
             settings_text = controller.settings_path.read_text("utf-8")
@@ -99,7 +96,7 @@ class AppTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 controller.start("fake-test-key-long-enough")
 
-    def test_config_updates_only_owned_runtime(self):
+    def test_setup_writes_only_own_config_and_never_touches_third_party(self):
         with tempfile.TemporaryDirectory() as temp:
             directory = Path(temp)
             controller = app.Controller(directory / "profile")
@@ -107,41 +104,32 @@ class AppTests(unittest.TestCase):
             runtime.mkdir()
             account = directory / "profile/napcat/config/onebot11_10000.json"
             app.write_json(account, {"network": {}})
-            config = controller.setup(runtime)
-            self.assertEqual(json.loads(account.read_text("utf-8")), config)
-            self.assertTrue((directory / "profile/napcat/config/webui.json").exists())
+            controller.setup()
+            self.assertEqual(json.loads(account.read_text("utf-8")), {"network": {}})
+            self.assertFalse((directory / "profile/napcat/config/webui.json").exists())
             self.assertFalse((runtime / "napcat/config/webui.json").exists())
-            self.assertEqual(json.loads((directory / "profile/config.json").read_text("utf-8"))["deepseek"]["api_key"], "")
+            config = json.loads((directory / "profile/config.json").read_text("utf-8"))
+            self.assertEqual(config["deepseek"]["api_key"], "")
+            self.assertEqual(config["onebot"]["ws_url"], "ws://127.0.0.1:3001")
 
-    def test_napcat_protocol_matches_official_auth_and_renews(self):
-        calls = []
-        class Handler(BaseHTTPRequestHandler):
-            def log_message(self, *_):
-                pass
-            def do_POST(self):
-                payload = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
-                calls.append((self.path, payload, self.headers.get("Authorization")))
-                value = {"Credential": "fake-session"} if self.path == "/api/auth/login" else {"isLogin": False, "qrcodeurl": "test-qr"}
-                content = json.dumps({"code": 0, "data": value}).encode()
-                self.send_response(200)
-                self.send_header("Content-Length", str(len(content)))
-                self.end_headers()
-                self.wfile.write(content)
-        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-        threading.Thread(target=server.serve_forever, daemon=True).start()
-        try:
-            api = app.Napcat(server.server_port, "test-password")
-            api.login()
-            status = api.call("/QQLogin/CheckLoginStatus")
-            self.assertFalse(status["isLogin"])
-            self.assertEqual(calls[0][1]["hash"], hashlib.sha256(b"test-password.napcat").hexdigest())
-            self.assertEqual(calls[1][2], "Bearer fake-session")
-            api.authenticated_at -= 3601
-            api.call("/QQLogin/CheckLoginStatus")
-            self.assertEqual([row[0] for row in calls].count("/api/auth/login"), 2)
-        finally:
-            server.shutdown()
-            server.server_close()
+    def test_onebot_endpoint_validation(self):
+        for bad in ("http://127.0.0.1:3001", "ws://", "ws://user:pass@127.0.0.1:3001", "", 12345):
+            with self.assertRaises(ValueError):
+                app.onebot_endpoint(bad)
+        self.assertEqual(app.onebot_endpoint("ws://127.0.0.1:3001/"), "ws://127.0.0.1:3001")
+        self.assertEqual(app.onebot_endpoint(" wss://example.com/onebot "), "wss://example.com/onebot")
+
+    def test_save_onebot_persists_and_keeps_token_when_blank(self):
+        with tempfile.TemporaryDirectory() as temp:
+            controller = app.Controller(Path(temp))
+            controller.save_onebot({"ws_url": "ws://127.0.0.1:3001", "access_token": "first-token"})
+            self.assertEqual(controller.settings["onebot"]["access_token"], "first-token")
+            controller.save_onebot({"ws_url": "ws://127.0.0.1:3002", "access_token": ""})
+            self.assertEqual(controller.settings["onebot"]["access_token"], "first-token")
+            self.assertEqual(controller.settings["onebot"]["ws_url"], "ws://127.0.0.1:3002")
+            state = controller.snapshot()
+            self.assertNotIn("first-token", json.dumps(state))
+            self.assertTrue(state["onebot"]["token_saved"])
 
     def test_browser_api_requires_session_and_expected_origin(self):
         with tempfile.TemporaryDirectory() as temp:

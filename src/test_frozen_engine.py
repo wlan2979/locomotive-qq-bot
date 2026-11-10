@@ -53,8 +53,7 @@ async def check(executable, directory):
     await site.start()
     port = site._server.sockets[0].getsockname()[1]
     directory.mkdir(parents=True, exist_ok=True)
-    config = app.make_config(port, "offline-test-token")
-    config["onebot"]["ws_url"] += "/onebot"
+    config = app.make_config(f"ws://127.0.0.1:{port}/onebot", "offline-test-token")
     config["deepseek"]["base_url"] = f"http://127.0.0.1:{port}"
     config["deepseek"]["api_key"] = "fake-key-used-only-on-loopback"
     config["bot"].update(split_messages=False, enable_vision=False)

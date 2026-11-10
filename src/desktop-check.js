@@ -10,12 +10,12 @@
     check(!document.getElementById('empty-bots').hidden&&document.getElementById('start').disabled,'Empty robot view failed');
     await create('重新创建');
     document.querySelector('[data-view="plugins"]').click();
-    for(const name of ['comfyui','voicestudio','napcat']){
+    for(const name of ['comfyui','voicestudio']){
       document.querySelector(`[data-resource="${name}"][data-action="remove"]`).click();
-      await wait(()=>!working&&(name==='napcat'?data.napcat_removed:data.plugins[name].removed));
+      await wait(()=>!working&&data.plugins[name].removed);
       const add=document.querySelector(`[data-resource="${name}"][data-action="add"]`);
       check(!add.hidden&&add.closest('article').querySelector('.plugin-body').hidden,'Removed plugin still active');
-      add.click();await wait(()=>!working&&!(name==='napcat'?data.napcat_removed:data.plugins[name].removed));
+      add.click();await wait(()=>!working&&!data.plugins[name].removed);
     }
     check(document.documentElement.scrollWidth<=innerWidth,'Horizontal overflow');
     window.__desktopResult={passed:true,robot_create_remove_empty:true,plugin_remove_restore:true,layout:true};

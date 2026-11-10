@@ -5,5 +5,4 @@ Pillow>=13,<14
 pywebview>=6.2,<7
 pythonnet>=3.2,<4
 py7zr>=1.1,<2
-qrcode>=8,<9
 PyInstaller>=6.22,<7

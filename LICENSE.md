@@ -39,7 +39,7 @@
 
 | 组件 / 版本 | 许可 | 与本项目关系 | 约束 |
 | --- | --- | --- | --- |
-| [NapCatQQ](https://github.com/NapNeko/NapCatQQ) v4.18.42 | **Limited Redistribution License**（自定义，非 OSI）<br>Copyright © 2024 Mlikiowa | 当前源码仍含自动下载并启动官方原版的遗留逻辑，**下一版移除**；不打包、不修改 | 禁商用；禁未获授权「基于 NapCat 代码开发」；再分发须附许可全文与来源版权；修改后的代码不得公开发布 |
+| [NapCatQQ](https://github.com/NapNeko/NapCatQQ) v4.18.42 | **Limited Redistribution License**（自定义，非 OSI）<br>Copyright © 2024 Mlikiowa | **已解耦**：不下载、不安装、不启动，也不内嵌；由用户自备 | 禁商用；禁未获授权「基于 NapCat 代码开发」；再分发须附许可全文与来源版权 |
 | [ComfyUI](https://github.com/Comfy-Org/ComfyUI) v0.44.0 | **GPL-3.0** | 运行时下载官方便携包或复用本机安装，独立进程 + 本机 HTTP API | 不打包、不修改、不链接其代码 → 不构成衍生作品，不要求 Locomotive 源码开源 |
 | [VoiceStudio](https://github.com/debpalash/VoiceStudio) 0.5.7 | **AGPL-3.0** | 运行时下载官方安装包或复用本机安装，独立进程 | 本地桌面单用户不触发 AGPL §13；改成对外网络服务会触发源码提供义务 |
 | [workflow_templates](https://github.com/Comfy-Org/workflow_templates) | **MIT** | 仅参考 Z-Image 模板参数，代码自行实现并注明来源 | 无额外义务 |
@@ -47,11 +47,11 @@
 | py7zr / pyppmd / pybcj / inflate64 / multivolumefile | **LGPL-2.1-or-later** | 打包进单文件 EXE | 已按 LGPL §6 在 `src/THIRD_PARTY_NOTICES.txt` 列出精确版本与源码获取方式 |
 | aiohttp / Pillow / pywebview / pythonnet / qrcode / Python 运行时 | Apache-2.0 / HPND / BSD-3-Clause / MIT / BSD / PSF | 打包进 EXE | 各许可全文见 `src/THIRD_PARTY_NOTICES.txt` |
 
-## 关于「运行时下载」的设计与后续变更
+## 与协议端的关系（v4.0.0 起已解耦）
 
-当前源码**仍包含**首次连接时从 NapCat 官方 Release 下载原版、校验、解压、写配置并启动子进程的逻辑（`src/app.py` 的 `prepare_runtime()` / `setup()` / `launch_qq()`）。发布包从未内嵌 NapCat 二进制，但这一集成关系是项目决定解耦的原因。
+自 v4.0.0 起，本软件是**通用 OneBot 11 客户端**：不下载、不安装、不配置、不启动 NapCat 或任何其他协议实现，也不内嵌其二进制。用户自行准备并登录兼容协议端，只把 WebSocket 地址与访问令牌填入本工作台。
 
-**下一版将移除这套逻辑**，产品改为**通用 OneBot 11 客户端**：用户自备任意兼容协议端，自行填写 WebSocket 地址与 Token。届时软件运行不再依赖任何特定协议端。进度见 [README 路线图](README.md#路线图)。
+早前的内部构建曾自动下载 NapCat 官方原版运行组件，该逻辑已从源码中移除。这使本项目与 NapCat 的集成关系断开，落到上游在 [#2017](https://github.com/NapNeko/NapCatQQ/issues/2017) 认可的形态（不捆绑、只走 OneBot 11 协议）。
 
 **任何把 NapCat / ComfyUI / VoiceStudio 打包进发布物、或分发其修改版的做法，都会改变上述合规结论。**
 

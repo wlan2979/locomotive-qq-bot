@@ -2,13 +2,15 @@ Locomotive - Third-party notices
 
 This source distribution contains the Python bot engine and third-party Python runtime libraries.
 
-IMPORTANT - NapCatQQ v4.18.42
-The current source tree still contains legacy logic that downloads and launches the
-unmodified NapCat.Shell runtime from its official GitHub release on first use.
-This logic is scheduled for removal in the OneBot 11 decoupling work (see README roadmap).
-NapCat is NOT embedded in this repository or in any released binary.
-Its use is governed by the upstream Limited Redistribution License reproduced below,
-which prohibits ANY commercial use.
+IMPORTANT - NapCatQQ (NOT bundled, NOT downloaded, NOT launched)
+As of v4.0.0 the application is a standard OneBot 11 client. It does not download,
+install, configure, or launch NapCat or any other protocol implementation. Users are
+expected to run their own OneBot 11 compatible protocol endpoint and provide its
+WebSocket address and access token.
+NapCat is NOT embedded in this repository or in any released binary. Earlier internal
+builds did download the unmodified NapCat.Shell runtime at first use; that code has been
+removed. NapCat remains governed by the upstream Limited Redistribution License
+reproduced below, which prohibits ANY commercial use.
 
 ----------------------------------------------------------------------
 Limited Redistribution License for NapCat

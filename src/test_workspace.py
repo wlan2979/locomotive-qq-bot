@@ -50,18 +50,18 @@ class WorkspaceTests(unittest.TestCase):
         finally:
             server.shutdown(); server.server_close()
 
-    def test_enabled_plugin_is_prepared_before_qq_runtime(self):
+    def test_enabled_plugin_is_prepared_before_engine_starts(self):
         with tempfile.TemporaryDirectory() as temp:
             controller = app.Controller(Path(temp))
             controller.settings['plugins']['comfyui']['enabled'] = True
             completed = MagicMock()
             completed.is_alive.return_value = False
             controller.resources.thread = completed
-            with patch('app.validate_model_key', return_value='ok'), patch.object(controller.resources, 'install') as install, patch.object(controller.resources, 'snapshot', return_value={'job': {'phase': 'done'}}), patch.object(controller, 'prepare_runtime', side_effect=InterruptedError) as prepare:
+            with patch('app.validate_model_key', return_value='ok'), patch.object(controller.resources, 'install') as install, patch.object(controller.resources, 'snapshot', return_value={'job': {'phase': 'done'}}), patch.object(controller, 'launch_engine', side_effect=InterruptedError) as launch:
                 controller.start('offline-fixture-key')
                 controller.worker.join(2)
                 install.assert_called_once_with('comfyui', 'http://127.0.0.1:8188')
-                prepare.assert_called_once()
+                launch.assert_called_once()
             self.assertEqual(controller.snapshot()['stage'], 'idle')
 
     def test_remove_all_bots_preserves_files_and_stays_empty_after_restart(self):
@@ -93,8 +93,8 @@ class WorkspaceTests(unittest.TestCase):
             self.assertFalse(loaded.snapshot()['plugins']['comfyui']['enabled'])
             loaded.change_plugin('comfyui', False)
             self.assertFalse(loaded.snapshot()['plugins']['comfyui']['removed'])
-            loaded.change_plugin('napcat', True)
-            with self.assertRaisesRegex(ValueError, 'NapCat'): loaded.start('fixture-key')
+            loaded.settings['onebot']['ws_url'] = ''
+            with self.assertRaisesRegex(ValueError, 'WebSocket'): loaded.start('fixture-key')
 
     def test_bots_keep_separate_profiles_and_persist_personas(self):
         with tempfile.TemporaryDirectory() as temp, patch('resources.installed_voice', return_value=''):
@@ -103,7 +103,7 @@ class WorkspaceTests(unittest.TestCase):
             controller.save_bot({'name': '小火车', 'persona': '说话简短，喜欢旅行。'})
             first = controller.selected_bot()['id']
             self.assertTrue(controller.directory.is_relative_to(root / 'bots'))
-            controller.setup(root / 'runtime')
+            controller.setup()
             cfg = Config.load(controller.directory / 'config.json')
             self.assertEqual(cfg.bot.self_names, ['小火车'])
             self.assertIn('喜欢旅行', cfg.bot.system_prompt)
@@ -142,7 +142,7 @@ class WorkspaceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp, patch('resources.installed_voice', return_value=''):
             controller = app.Controller(Path(temp))
             controller.save_plugins(plugins)
-            controller.setup(Path(temp) / 'runtime')
+            controller.setup()
             cfg = Config.load(Path(temp) / 'config.json')
             self.assertTrue(cfg.imagegen.local_only)
             self.assertEqual(cfg.imagegen.comfyui_checkpoint, 'demo.safetensors')

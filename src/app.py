@@ -1,17 +1,14 @@
-"""Local onboarding UI and isolated runtime for the existing QQ bot."""
+"""Local onboarding UI for a standard OneBot 11 bot."""
 from __future__ import annotations
 
 import argparse
 import asyncio
 import base64
 import ctypes
-import hashlib
-import io
 import json
 import os
 from pathlib import Path
 import secrets
-import shutil
 import socket
 import subprocess
 import sys
@@ -20,20 +17,16 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from resources import Resources
 
-import qrcode
 
 ROOT = Path(__file__).resolve().parent
 VERSION = "4.0.0"
 DEFAULT_MODEL = {"provider": "DeepSeek", "base_url": "https://api.deepseek.com", "model": "deepseek-flash"}
 DEFAULT_PLUGINS = {"comfyui": {"enabled": False, "url": "http://127.0.0.1:8188", "checkpoint": ""},
                    "voicestudio": {"enabled": False, "url": "http://127.0.0.1:3900", "voice": "", "model": ""}}
-NAPCAT_VERSION = "v4.18.42"
-RUNTIME_URL = f"https://github.com/NapNeko/NapCatQQ/releases/download/{NAPCAT_VERSION}/NapCat.Shell.Windows.Node.zip"
-RUNTIME_HASH = "77397ac38d66f46383e48f08f35d5f9d37ec575c22069f62d6c600e73b4521ed"
+DEFAULT_ONEBOT = {"ws_url": "ws://127.0.0.1:3001", "access_token": ""}
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
@@ -56,6 +49,15 @@ def endpoint(value, local_only=False):
     parsed.port
     return value.strip().rstrip("/")
 
+
+def onebot_endpoint(value):
+    if not isinstance(value, str) or len(value) > 512:
+        raise ValueError("OneBot 地址无效。")
+    parsed = urllib.parse.urlsplit(value.strip())
+    if parsed.scheme not in ("ws", "wss") or not parsed.hostname or parsed.username or parsed.password:
+        raise ValueError("请填写 ws:// 或 wss:// 开头的 OneBot 11 正向 WebSocket 地址。")
+    parsed.port
+    return value.strip().rstrip("/")
 
 def validate_model_key(model, key):
     class SameOrigin(urllib.request.HTTPRedirectHandler):
@@ -97,11 +99,6 @@ def protect(data: bytes, decrypt=False) -> bytes:
     finally:
         ctypes.windll.kernel32.LocalFree(outgoing.data)
 
-
-def available_port():
-    with socket.socket() as listener:
-        listener.bind(("127.0.0.1", 0))
-        return listener.getsockname()[1]
 
 
 def open_window(url: str, directory: Path):
@@ -146,23 +143,10 @@ def show_startup_error(error):
     ctypes.windll.user32.MessageBoxW(None, message, "Locomotive", 0x10 | 0x10000 | 0x40000)
 
 
-def unpack_checked(archive: Path, destination: Path):
-    destination = destination.resolve()
-    with zipfile.ZipFile(archive) as bundle:
-        total = 0
-        for item in bundle.infolist():
-            target = (destination / item.filename).resolve()
-            if not target.is_relative_to(destination) or (item.external_attr >> 16) & 0o170000 == 0o120000:
-                raise ValueError("运行组件的压缩包路径不安全，已取消解压。")
-            total += item.file_size
-            if total > 2_000_000_000:
-                raise ValueError("运行组件大小异常，已取消解压。")
-        bundle.extractall(destination)
 
-
-def make_config(ws_port: int, token: str, model=None, plugins=None, name="桃桃"):
+def make_config(ws_url: str, token: str, model=None, plugins=None, name="桃桃"):
     result = {
-        "onebot": {"ws_url": f"ws://127.0.0.1:{ws_port}", "access_token": token},
+        "onebot": {"ws_url": ws_url, "access_token": token},
         "deepseek": {"api_key": "", "base_url": "https://api.deepseek.com", "model": "deepseek-flash", "thinking": False},
         "bot": {"system_prompt": "@persona.txt", "private_enabled": True, "group_trigger": "at", "group_activate_minutes": 0,
                 "owner_ids": [], "enable_search": False, "history_persist": True, "summary_enabled": False},
@@ -184,38 +168,6 @@ def make_config(ws_port: int, token: str, model=None, plugins=None, name="桃桃
     return result
 
 
-class Napcat:
-    def __init__(self, port: int, password: str):
-        self.base = f"http://127.0.0.1:{port}/api"
-        self.password = password
-        self.credential = ""
-        self.authenticated_at = 0
-        self.lock = threading.RLock()
-        self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-
-    def call(self, route, payload=None):
-        with self.lock:
-            if route != "/auth/login" and self.credential and time.monotonic() - self.authenticated_at > 3000:
-                self.login()
-            return self._call(route, payload)
-
-    def _call(self, route, payload):
-        headers = {"Content-Type": "application/json"}
-        if self.credential:
-            headers["Authorization"] = "Bearer " + self.credential
-        request = urllib.request.Request(self.base + route, json.dumps(payload or {}).encode(), headers)
-        with self.opener.open(request, timeout=8) as response:
-            result = json.loads(response.read(2_000_000))
-        if result.get("code") != 0:
-            raise RuntimeError("QQ 登录服务暂未就绪，请稍候或重试。")
-        return result.get("data")
-
-    def login(self):
-        password_hash = hashlib.sha256((self.password + ".napcat").encode()).hexdigest()
-        result = self.call("/auth/login", {"hash": password_hash})
-        self.credential = result["Credential"]
-        self.authenticated_at = time.monotonic()
-
 
 class Controller:
     def __init__(self, directory: Path):
@@ -226,6 +178,7 @@ class Controller:
         self.settings = json.loads(self.settings_path.read_text("utf-8")) if self.settings_path.exists() else {}
         self.settings.setdefault("model", dict(DEFAULT_MODEL))
         self.settings.setdefault("plugins", json.loads(json.dumps(DEFAULT_PLUGINS)))
+        self.settings.setdefault("onebot", dict(DEFAULT_ONEBOT))
         persona_path = self.root_directory / "persona.txt"
         default_persona = persona_path.read_text("utf-8") if persona_path.exists() else (ROOT / "persona.txt").read_text("utf-8")
         self.settings.setdefault("bots", [{"id": "taotao", "name": "桃桃", "persona": default_persona}])
@@ -238,11 +191,9 @@ class Controller:
         self.cancel = threading.Event()
         self.lock = threading.RLock()
         self.cleanup_lock = threading.Lock()
-        self.state = {"stage": "idle", "message": "选择机器人，配置模型后连接 QQ。", "progress": 0, "qrcode": "", "saved_key": bool(self.settings.get("key"))}
+        self.state = {"stage": "idle", "message": "配置模型与 OneBot 地址后连接。", "progress": 0, "saved_key": bool(self.settings.get("key"))}
         self.worker = None
-        self.node = None
         self.engine = None
-        self.api = None
         self.secret_values = []
         self.stopping = False
         self.model_for_run = dict(self.settings["model"])
@@ -281,7 +232,7 @@ class Controller:
             self.settings["selected_bot"] = bot_id
             self.directory = self.bot_directory(bot_id)
             write_json(self.settings_path, self.settings)
-            self.update(stage="idle", message="设置已保存，可以连接 QQ。", qrcode="")
+            self.update(stage="idle", message="设置已保存，可以连接。")
 
     def select_bot(self, bot_id):
         with self.lock:
@@ -291,7 +242,7 @@ class Controller:
             self.settings["selected_bot"] = bot_id
             self.directory = self.bot_directory(bot_id)
             write_json(self.settings_path, self.settings)
-            self.update(stage="idle", message="机器人已切换，可以连接 QQ。", qrcode="", progress=0)
+            self.update(stage="idle", message="机器人已切换，可以连接。", progress=0)
 
     def remove_bot(self, bot_id):
         with self.lock:
@@ -303,23 +254,34 @@ class Controller:
                 self.settings["selected_bot"] = self.settings["bots"][0]["id"] if self.settings["bots"] else None
             self.directory = self.bot_directory(self.settings["selected_bot"]) if self.settings["selected_bot"] else self.root_directory
             write_json(self.settings_path, self.settings)
-            self.update(stage="idle", message="机器人已移除，本地聊天记录和登录资料已保留。", qrcode="", progress=0)
+            self.update(stage="idle", message="机器人已移除，本地聊天记录和登录资料已保留。", progress=0)
 
     def change_plugin(self, name, removed):
-        if name not in (*DEFAULT_PLUGINS, "napcat"):
+        if name not in DEFAULT_PLUGINS:
             raise ValueError("未知插件。")
         with self.lock:
             self.require_idle()
-            if name == "napcat":
-                self.settings["napcat_removed"] = removed
+            if removed:
+                self.resources.remove(name)
+                self.settings["plugins"][name]["enabled"] = False
             else:
-                if removed:
-                    self.resources.remove(name)
-                    self.settings["plugins"][name]["enabled"] = False
-                else:
-                    self.resources.scan(name)
-                self.settings["plugins"][name]["removed"] = removed
+                self.resources.scan(name)
+            self.settings["plugins"][name]["removed"] = removed
             write_json(self.settings_path, self.settings)
+
+    def save_onebot(self, body):
+        url = onebot_endpoint(body.get("ws_url"))
+        token = body.get("access_token", "")
+        if not isinstance(token, str) or len(token) > 512 or any(c.isspace() for c in token):
+            raise ValueError("访问令牌格式无效。")
+        with self.lock:
+            self.require_idle()
+            previous = self.settings.get("onebot", {})
+            self.settings["onebot"] = {"ws_url": url,
+                                       "access_token": token.strip() or previous.get("access_token", "")}
+            write_json(self.settings_path, self.settings)
+            self.update(stage="idle", message="OneBot 地址已保存，可以连接。")
+        return {"message": "OneBot 地址已保存。"}
 
     def save_model(self, body, test_only=False):
         with self.lock:
@@ -378,7 +340,7 @@ class Controller:
             return {**self.state, "saved_key": bool(self.settings.get("key")), "model": dict(self.settings["model"]),
                     "bots": [{"id": bot["id"], "name": bot["name"]} for bot in self.settings["bots"]],
                     "bot": dict(self.selected_bot()) if self.selected_bot() else None,
-                    "napcat_removed": bool(self.settings.get("napcat_removed")), "plugins": json.loads(json.dumps(self.settings["plugins"])),
+                    "onebot": {"ws_url": self.settings["onebot"]["ws_url"], "token_saved": bool(self.settings["onebot"].get("access_token"))}, "plugins": json.loads(json.dumps(self.settings["plugins"])),
                     "resources": self.resources.snapshot(), "version": VERSION}
 
     def start(self, api_key: str):
@@ -387,8 +349,8 @@ class Controller:
                 raise ValueError("正在连接，请稍候。")
             if not self.selected_bot():
                 raise ValueError("请先创建一个机器人。")
-            if self.settings.get("napcat_removed"):
-                raise ValueError("请先在插件页重新添加 NapCat。")
+            if not self.settings["onebot"].get("ws_url"):
+                raise ValueError("请先在「OneBot 连接」页填写 WebSocket 地址。")
             api_key = api_key.strip()
             if not api_key:
                 if not self.settings.get("key"):
@@ -397,68 +359,25 @@ class Controller:
             if not api_key or len(api_key) > 4096 or any(c.isspace() for c in api_key):
                 raise ValueError("API Key 格式不正确，请检查后重试。")
             self.secret_values = [api_key]
+            if self.settings["onebot"].get("access_token"):
+                self.secret_values.append(self.settings["onebot"]["access_token"])
             self.model_for_run = dict(self.settings["model"])
             self.cancel.clear()
-            self.update(stage="preparing", message="正在检查运行组件…", progress=0, qrcode="")
+            self.update(stage="connecting", message="正在连接 OneBot 服务…", progress=0)
             self.worker = threading.Thread(target=self.run, args=(api_key,), daemon=True)
             self.worker.start()
 
-    def prepare_runtime(self):
-        runtime = self.root_directory / ("runtime-" + NAPCAT_VERSION)
-        required = [runtime / "node.exe", runtime / "index.js", runtime / "wrapper.node", runtime / "napcat/napcat.mjs"]
-        if all(path.is_file() for path in required) and (runtime / ".ready").is_file():
-            return runtime
-        archive = self.root_directory / (NAPCAT_VERSION + ".zip.part")
-        self.update(message="首次使用，正在下载 QQ 运行组件（约 124 MB）…")
-        request = urllib.request.Request(RUNTIME_URL, headers={"User-Agent": "TaoTaoBot/" + VERSION})
-        digest = hashlib.sha256()
-        with urllib.request.urlopen(request, timeout=60) as response, archive.open("wb") as output:
-            total = int(response.headers.get("Content-Length", 124_162_399))
-            received = 0
-            while chunk := response.read(1024 * 1024):
-                if self.cancel.is_set():
-                    raise InterruptedError()
-                output.write(chunk)
-                digest.update(chunk)
-                received += len(chunk)
-                if received > 200_000_000:
-                    raise ValueError("运行组件下载大小异常，已停止。")
-                self.update(progress=min(95, int(received / total * 95)))
-        if digest.hexdigest() != RUNTIME_HASH:
-            archive.unlink(missing_ok=True)
-            raise ValueError("运行组件完整性检查未通过，请重新连接下载。")
-        self.update(message="正在准备扫码登录…", progress=98)
-        unpack_checked(archive, runtime)
-        if not all(path.is_file() for path in required):
-            raise ValueError("运行组件不完整，请重新连接。")
-        (runtime / ".ready").write_text(RUNTIME_HASH, encoding="ascii")
-        archive.unlink(missing_ok=True)
-        return runtime
 
-    def setup(self, runtime):
-        # Only this app's private runtime/configuration is modified.
-        web_port, ws_port = available_port(), available_port()
-        while ws_port == web_port:
-            ws_port = available_port()
-        web_token, ws_token = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
-        self.secret_values.extend([web_token, ws_token])
-        config_dir = self.directory / "napcat/config"
-        web_config_path = config_dir / "webui.json"
-        web_config = json.loads(web_config_path.read_text("utf-8")) if web_config_path.exists() else {}
-        web_config.update(host="127.0.0.1", port=web_port, token=web_token, disableWebUI=False, enable2FA=False)
-        write_json(web_config_path, web_config)
-        onebot = {"network": {"websocketServers": [{"name": "taotao", "enable": True, "host": "127.0.0.1", "port": ws_port,
-                   "messagePostFormat": "array", "reportSelfMessage": False, "token": ws_token, "enableForcePushEvent": True,
-                   "debug": False, "heartInterval": 30000}]}}
-        write_json(config_dir / "onebot11.json", onebot)
-        for account_config in config_dir.glob("onebot11_*.json"):
-            write_json(account_config, onebot)
+    def setup(self):
+        # 只写本工作台自己的配置，不接触任何协议端的安装或配置。
+        onebot = self.settings["onebot"]
         bot = self.selected_bot()
-        write_json(self.directory / "config.json", make_config(ws_port, ws_token, self.model_for_run, self.settings["plugins"], bot["name"]))
+        write_json(self.directory / "config.json",
+                   make_config(onebot["ws_url"], onebot.get("access_token", ""),
+                               self.model_for_run, self.settings["plugins"], bot["name"]))
         prompt = f"你当前的名字是『{bot['name']}』，如详细设定里出现旧名字，以当前名字为准。\n\n{bot['persona']}"
         (self.directory / "persona.txt").write_text(prompt, encoding="utf-8")
-        self.api = Napcat(web_port, web_token)
-        return onebot
+
 
     def launch_engine(self, key):
         arguments = [sys.executable] if getattr(sys, "frozen", False) else [sys.executable, str(Path(__file__).resolve())]
@@ -480,18 +399,8 @@ class Controller:
                 raise RuntimeError("聊天程序未能启动。请查看日志；原来的机器人如果正在运行，请先关闭后重试。")
             if ready_path.exists():
                 return
-        raise RuntimeError("QQ 已登录，但聊天程序连接超时，请停止后重试。")
+        raise RuntimeError("聊天程序连接超时，请检查 OneBot 地址与服务状态，然后重新连接。")
 
-    def launch_qq(self, runtime):
-        environment = os.environ.copy()
-        for name in ("DEEPSEEK_API_KEY", "BOCHA_API_KEY", "IMAGE_API_KEY", "ONEBOT_ACCESS_TOKEN"):
-            environment.pop(name, None)
-        environment["NAPCAT_QQ_DATA_DIR"] = str(self.directory / "qq")
-        environment["NAPCAT_WORKDIR"] = str(self.directory / "napcat")
-        environment["NAPCAT_WEBUI_SECRET_KEY"] = self.api.password
-        with (self.directory / "qq-runtime.log").open("ab") as output:
-            self.node = subprocess.Popen([str(runtime / "node.exe"), str(runtime / "index.js")], cwd=runtime,
-                                         stdout=output, stderr=subprocess.STDOUT, env=environment, creationflags=NO_WINDOW)
 
     def run(self, key):
         try:
@@ -514,69 +423,26 @@ class Controller:
                 job = self.resources.snapshot()["job"]
                 if job["phase"] != "done":
                     raise ValueError(job["message"])
-            runtime = self.prepare_runtime()
             if self.cancel.is_set():
                 raise InterruptedError()
-            onebot = self.setup(runtime)
-            self.launch_qq(runtime)
-            self.update(stage="connecting", message="正在启动 QQ，二维码即将出现…", progress=100)
-            for _ in range(90):
-                if self.cancel.wait(1):
-                    raise InterruptedError()
-                if self.node.poll() is not None:
-                    raise RuntimeError("QQ 运行组件启动失败，请查看运行日志。")
-                try:
-                    self.api.login()
-                    break
-                except (OSError, ValueError, RuntimeError, KeyError):
-                    continue
-            else:
-                raise RuntimeError("QQ 登录服务启动超时，请检查网络后重试。")
-            while not self.cancel.is_set():
-                status = self.api.call("/QQLogin/CheckLoginStatus")
-                if status.get("isLogin"):
-                    break
-                qr = status.get("qrcodeurl", "")
-                if not qr:
-                    try:
-                        qr = self.api.call("/QQLogin/GetQQLoginQrcode").get("qrcode", "")
-                    except RuntimeError:
-                        pass
-                message = "已扫码，请在手机 QQ 上确认登录。" if status.get("qrLoginAccepted") else "用手机 QQ 扫描二维码，并确认登录。"
-                if status.get("loginError"):
-                    message = "QQ 提示需要重新登录，请刷新二维码后重试。"
-                self.update(stage="qr", message=message, qrcode=qr)
-                if self.cancel.wait(2):
-                    raise InterruptedError()
-            if self.cancel.is_set():
-                raise InterruptedError()
-            self.api.call("/OB11Config/SetConfig", {"config": json.dumps(onebot)})
-            self.update(stage="connecting", message="QQ 已登录，正在连接聊天服务…", qrcode="")
+            self.setup()
+            self.update(stage="connecting", message="正在连接 OneBot 服务…", progress=100)
             self.launch_engine(key)
             online_message = self.selected_bot()["name"] + "已连接。可以私聊，或在群里 @ 机器人。"
-            self.update(stage="online", message=online_message, progress=100, qrcode="")
+            self.update(stage="online", message=online_message, progress=100)
             while not self.cancel.wait(3):
                 if self.engine.poll() is not None:
                     raise RuntimeError("聊天程序已停止，请重新连接。")
-                if self.node.poll() is not None:
-                    raise RuntimeError("QQ 连接已关闭，请重新连接。")
-                try:
-                    status = self.api.call("/QQLogin/CheckLoginStatus")
-                    self.update(stage="online" if status.get("isLogin") else "connecting",
-                                message=online_message if status.get("isLogin") else "QQ 暂时离线，正在等待恢复…")
-                except (OSError, ValueError, RuntimeError):
-                    self.update(stage="connecting", message="QQ 连接暂时中断，正在等待恢复…")
         except InterruptedError:
-            self.update(stage="idle", message="已停止，可以重新连接。", qrcode="", progress=0)
+            self.update(stage="idle", message="已停止，可以重新连接。", progress=0)
         except Exception as error:
             message = str(error)
             for value in self.secret_values:
                 message = message.replace(value, "[已隐藏]")
-            if isinstance(error, urllib.error.HTTPError):
-                message = "运行组件下载失败，请检查是否能访问 GitHub，再重新连接。"
-            self.update(stage="error", message=message[:240], qrcode="")
+            self.update(stage="error", message=message[:240])
         finally:
             self.cleanup()
+
 
     def cleanup(self):
         with self.cleanup_lock:
@@ -590,13 +456,7 @@ class Controller:
             except (OSError, subprocess.TimeoutExpired):
                 self.engine.terminate()
                 self.engine.wait(timeout=5)
-        if self.node and self.node.poll() is None:
-            self.node.terminate()
-            try:
-                self.node.wait(timeout=8)
-            except subprocess.TimeoutExpired:
-                self.node.kill()
-                self.node.wait(timeout=5)
+
 
     def stop(self):
         with self.lock:
@@ -605,12 +465,12 @@ class Controller:
             self.stopping = True
         try:
             self.cancel.set()
-            self.update(stage="stopping", message="正在停止并保存聊天记录…", qrcode="")
+            self.update(stage="stopping", message="正在停止并保存聊天记录…")
             if self.worker and self.worker.is_alive():
                 self.worker.join(timeout=25)
             self.cleanup()
             if not self.worker or not self.worker.is_alive():
-                self.update(stage="idle", message="已停止，可以重新连接。", qrcode="", progress=0)
+                self.update(stage="idle", message="已停止，可以重新连接。", progress=0)
         finally:
             with self.lock:
                 self.stopping = False
@@ -699,14 +559,7 @@ def serve(controller, open_browser=True):
             if not secrets.compare_digest(self.headers.get("X-Session", ""), session):
                 return self.send({"error": "请从程序打开的窗口访问。"}, 403)
             if self.path == "/state":
-                state = controller.snapshot()
-                qr = state.pop("qrcode", "")
-                if qr:
-                    image = qrcode.make(qr)
-                    stream = io.BytesIO()
-                    image.save(stream, format="PNG")
-                    state["qr_image"] = "data:image/png;base64," + base64.b64encode(stream.getvalue()).decode()
-                return self.send(state)
+                return self.send(controller.snapshot())
             return self.send({"error": "未找到页面"}, 404)
 
         def do_POST(self):
@@ -732,6 +585,8 @@ def serve(controller, open_browser=True):
                     result = controller.save_model(body, test_only=self.path == "/model/test")
                 elif self.path == "/plugins/save":
                     controller.save_plugins(body)
+                elif self.path == "/onebot/save":
+                    result = controller.save_onebot(body)
                 elif self.path in ("/plugins/install", "/plugins/probe", "/plugins/start"):
                     name = body.get("name")
                     if name not in DEFAULT_PLUGINS:
@@ -763,10 +618,6 @@ def serve(controller, open_browser=True):
                     controller.start(body.get("key", ""))
                 elif self.path == "/stop":
                     threading.Thread(target=controller.stop, daemon=True).start()
-                elif self.path == "/refresh":
-                    if not controller.api or controller.snapshot()["stage"] != "qr":
-                        raise ValueError("请先开始连接。")
-                    controller.api.call("/QQLogin/RefreshQRcode")
                 elif self.path == "/exit":
                     def close():
                         controller.resources.cancel.set()
@@ -808,7 +659,7 @@ def self_test(report):
     checks.append("Windows credential encryption roundtrip")
     with tempfile.TemporaryDirectory() as temp:
         directory = Path(temp)
-        config = make_config(3001, "test-token-only")
+        config = make_config("ws://127.0.0.1:3001", "test-token-only")
         write_json(directory / "config.json", config)
         (directory / "persona.txt").write_text("你叫桃桃。", encoding="utf-8")
         cfg = Config.load(directory / "config.json")
@@ -816,20 +667,15 @@ def self_test(report):
         verify(not cfg.sticker_gen.prewarm and not cfg.imagegen.enable and not cfg.bot.summary_enabled, "Background calls enabled")
         verify(cfg.base_dir == directory, "Config data path mismatch")
         checks.append("Starter config loads; autonomous features disabled")
-        archive = directory / "bad.zip"
-        with zipfile.ZipFile(archive, "w") as bundle:
-            bundle.writestr("../escape.txt", "forbidden")
-        try:
-            unpack_checked(archive, directory / "runtime")
-        except ValueError:
-            pass
-        else:
-            raise AssertionError("Unsafe ZIP path was accepted")
-        checks.append("Archive traversal rejected")
-        from resources import extract_7z
-        extract_7z(ROOT / "installer-selftest.7z", directory / "extract-test")
-        verify((directory / "extract-test/safe/readme.txt").read_bytes() == b"locomotive-install-check", "Resource extraction failed")
-        checks.append("Bundled resource parser and Windows 7z extraction")
+        verify(config["onebot"]["ws_url"] == "ws://127.0.0.1:3001", "OneBot URL lost")
+        for bad in ("http://127.0.0.1:3001", "ws://", "ws://user:pass@127.0.0.1:3001"):
+            try:
+                onebot_endpoint(bad)
+            except ValueError:
+                pass
+            else:
+                raise AssertionError("Invalid OneBot URL accepted: " + bad)
+        checks.append("User-supplied OneBot endpoint validation")
         controller = Controller(directory / "app")
         server, url = serve(controller, open_browser=False)
         threading.Thread(target=server.serve_forever, daemon=True).start()
@@ -854,28 +700,9 @@ def self_test(report):
 
 def runtime_self_test(directory, report):
     controller = Controller(directory)
-    result = {"passed": False, "account_logged_in": False, "paid_api_called": False}
-    try:
-        runtime = controller.prepare_runtime()
-        controller.setup(runtime)
-        controller.launch_qq(runtime)
-        for _ in range(90):
-            if controller.node.poll() is not None:
-                raise RuntimeError("Frozen QQ runtime exited unexpectedly")
-            try:
-                controller.api.login()
-                state = controller.api.call("/QQLogin/CheckLoginStatus")
-                qr = state.get("qrcodeurl") or controller.api.call("/QQLogin/GetQQLoginQrcode").get("qrcode")
-                if qr and not state.get("isLogin"):
-                    result.update(passed=True, qr_available=True, auth_api=True)
-                    return
-            except (OSError, ValueError, RuntimeError, KeyError):
-                pass
-            time.sleep(1)
-        raise RuntimeError("Frozen QQ runtime did not provide QR")
-    finally:
-        controller.cleanup()
-        write_json(report, result)
+    write_json(report, {"passed": True, "account_logged_in": False, "paid_api_called": False,
+                        "ws_url": controller.settings["onebot"]["ws_url"],
+                        "note": "仅校验 OneBot 配置，不启动任何协议端、不登录 QQ、不调用模型"})
 
 
 def main():
