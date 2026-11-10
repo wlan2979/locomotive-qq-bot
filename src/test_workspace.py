@@ -102,7 +102,7 @@ class WorkspaceTests(unittest.TestCase):
             controller = app.Controller(root)
             controller.save_bot({'name': '小火车', 'persona': '说话简短，喜欢旅行。'})
             first = controller.selected_bot()['id']
-            self.assertTrue(controller.directory.is_relative_to(root / 'bots'))
+            self.assertTrue(controller.directory.is_relative_to(root.resolve() / 'bots'))
             controller.setup()
             cfg = Config.load(controller.directory / 'config.json')
             self.assertEqual(cfg.bot.self_names, ['小火车'])
